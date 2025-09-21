@@ -12,15 +12,72 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* Koyu tema desteği devre dışı bırakıldı - Açık tema kullanılıyor */
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #f8fafc; /* Sade açık gri arka plan */
+  color: #374151; /* Daha muted koyu renk */
   font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* Sade mavi-mor tema */
+:root {
+  --primary-blue: #4f46e5; /* Daha muted mavi */
+  --primary-purple: #7c3aed; /* Daha muted mor */
+  --secondary-blue: #6366f1; /* Hafif daha açık mavi */
+  --secondary-purple: #8b5cf6; /* Hafif daha açık mor */
+  --light-blue: #f0f4ff; /* Çok açık mavi */
+  --light-purple: #faf5ff; /* Çok açık mor */
+  --text-dark: #374151;
+  --text-light: #6b7280;
+  --background: #f8fafc; /* Sade açık gri */
+  --card-bg: #ffffff;
+  --border-color: #e5e7eb;
+}
+
+/* Ana renkler */
+.accent-blue { color: var(--primary-blue); }
+.accent-purple { color: var(--primary-purple); }
+.bg-accent-blue { background-color: var(--primary-blue); }
+.bg-accent-purple { background-color: var(--primary-purple); }
+.border-accent-blue { border-color: var(--primary-blue); }
+.border-accent-purple { border-color: var(--primary-purple); }
+
+/* Metin renklerini düzenle */
+* {
+  color: var(--text-dark);
+}
+
+/* Daha muted metin renkleri */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-dark);
+}
+
+p, span, div {
+  color: inherit;
+}
+
+input, textarea, select {
+  color: var(--text-dark) !important;
+  background-color: white !important;
+  border-color: #e5e7eb !important;
+}
+
+input::placeholder {
+  color: var(--text-light) !important;
+}
+
+/* Button'lar için özel renkler - bunlar zaten Button component'inde tanımlı */
+button {
+  color: inherit;
+}
+
+/* Linkler için mavi renk */
+a {
+  color: var(--primary-blue) !important;
+}
+
+a:hover {
+  color: var(--secondary-blue) !important;
 }

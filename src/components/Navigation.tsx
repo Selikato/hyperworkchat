@@ -42,10 +42,10 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeTab === tab.id
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-indigo-50 text-indigo-700 shadow-sm'
+                    : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
                 }`}
               >
                 <span className="mr-2">{tab.icon}</span>
@@ -58,13 +58,13 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
           <div className="flex items-center space-x-4">
             {profile && (
               <div className="hidden sm:flex items-center space-x-2">
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-700">
                   {profile.first_name} {profile.last_name}
                 </span>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
                   {profile.role === 'student' ? 'Öğrenci' : 'Öğretmen'}
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className="text-sm text-gray-600">
                   {profile.total_points} puan
                 </span>
               </div>
@@ -87,10 +87,10 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
                   activeTab === tab.id
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    ? 'bg-indigo-50 text-indigo-700 shadow-sm'
+                    : 'text-gray-600 hover:text-indigo-600 hover:bg-indigo-50'
                 }`}
               >
                 <span className="mr-1">{tab.icon}</span>

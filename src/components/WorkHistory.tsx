@@ -5,6 +5,24 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Card from './Card'
 import { WorkSession } from '@/lib/database/types'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  Area,
+  AreaChart
+} from 'recharts'
+import { format, subDays, eachDayOfInterval } from 'date-fns'
+import { tr } from 'date-fns/locale'
 
 interface WorkStats {
   totalSessions: number
@@ -17,12 +35,40 @@ interface WorkStats {
   currentStreak: number
 }
 
+interface ChartData {
+  date: string
+  minutes: number
+  points: number
+  sessions: number
+  day: string
+}
+
+interface WeeklyData {
+  name: string
+  minutes: number
+  points: number
+  sessions: number
+}
+
+interface DistributionData {
+  name: string
+  value: number
+  color: string
+  [key: string]: string | number | undefined
+}
+
 export default function WorkHistory() {
   const { user } = useAuth()
   const [sessions, setSessions] = useState<WorkSession[]>([])
   const [stats, setStats] = useState<WorkStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'completed' | 'incomplete'>('all')
+
+  // Chart data states
+  const [weeklyData, setWeeklyData] = useState<WeeklyData[]>([])
+  const [timeDistribution, setTimeDistribution] = useState<DistributionData[]>([])
+  const [pointsTrend, setPointsTrend] = useState<ChartData[]>([])
+  const [completionData, setCompletionData] = useState<DistributionData[]>([])
 
   useEffect(() => {
     if (!user) return
@@ -42,6 +88,7 @@ export default function WorkHistory() {
       } else {
         setSessions(data || [])
         calculateStats(data || [])
+        calculateChartData(data || [])
       }
 
       setLoading(false)
@@ -96,6 +143,81 @@ export default function WorkHistory() {
       bestStreak,
       currentStreak
     })
+  }
+
+  const calculateChartData = (sessions: WorkSession[]) => {
+    // Weekly data for the last 7 days
+    const last7Days = eachDayOfInterval({
+      start: subDays(new Date(), 6),
+      end: new Date()
+    })
+
+    const weeklyChartData: WeeklyData[] = last7Days.map(date => {
+      const daySessions = sessions.filter(session => {
+        const sessionDate = new Date(session.created_at)
+        return sessionDate.toDateString() === date.toDateString()
+      })
+
+      return {
+        name: format(date, 'EEE', { locale: tr }),
+        minutes: daySessions.reduce((sum, s) => sum + s.actual_duration, 0),
+        points: daySessions.reduce((sum, s) => sum + s.points_earned, 0),
+        sessions: daySessions.length
+      }
+    })
+
+    setWeeklyData(weeklyChartData)
+
+    // Points trend (last 14 days)
+    const last14Days = eachDayOfInterval({
+      start: subDays(new Date(), 13),
+      end: new Date()
+    })
+
+    const pointsTrendData: ChartData[] = last14Days.map(date => {
+      const daySessions = sessions.filter(session => {
+        const sessionDate = new Date(session.created_at)
+        return sessionDate.toDateString() === date.toDateString()
+      })
+
+      return {
+        date: format(date, 'dd/MM'),
+        minutes: daySessions.reduce((sum, s) => sum + s.actual_duration, 0),
+        points: daySessions.reduce((sum, s) => sum + s.points_earned, 0),
+        sessions: daySessions.length,
+        day: format(date, 'EEE', { locale: tr })
+      }
+    })
+
+    setPointsTrend(pointsTrendData)
+
+    // Time distribution by hour
+    const hourDistribution: { [key: number]: number } = {}
+    sessions.forEach(session => {
+      const hour = new Date(session.created_at).getHours()
+      hourDistribution[hour] = (hourDistribution[hour] || 0) + session.actual_duration
+    })
+
+    const timeDistributionData: DistributionData[] = Object.entries(hourDistribution)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([hour, minutes]) => ({
+        name: `${hour}:00`,
+        value: minutes,
+        color: parseInt(hour) >= 6 && parseInt(hour) <= 18 ? '#3b82f6' : '#8b5cf6'
+      }))
+
+    setTimeDistribution(timeDistributionData)
+
+    // Completion rate data
+    const completed = sessions.filter(s => s.is_completed).length
+    const incomplete = sessions.length - completed
+
+    const completionData: DistributionData[] = [
+      { name: 'Tamamlandı', value: completed, color: '#10b981' },
+      { name: 'Tamamlanmadı', value: incomplete, color: '#ef4444' }
+    ]
+
+    setCompletionData(completionData)
   }
 
   const formatDate = (dateString: string) => {
@@ -180,6 +302,107 @@ export default function WorkHistory() {
               </div>
               <div className="text-sm text-gray-600">Tamamlanma Oranı</div>
             </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Charts Section */}
+      {weeklyData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Weekly Activity Chart */}
+          <Card>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Haftalık Çalışma Grafiği</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={weeklyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip
+                  formatter={(value, name) => [
+                    name === 'minutes' ? `${value} dakika` : `${value} puan`,
+                    name === 'minutes' ? 'Çalışma Süresi' : 'Kazanılan Puan'
+                  ]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="minutes"
+                  stackId="1"
+                  stroke="#3b82f6"
+                  fill="#3b82f6"
+                  fillOpacity={0.6}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="points"
+                  stackId="2"
+                  stroke="#8b5cf6"
+                  fill="#8b5cf6"
+                  fillOpacity={0.6}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Time Distribution */}
+          <Card>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Saatlik Çalışma Dağılımı</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={timeDistribution}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip
+                  formatter={(value) => [`${value} dakika`, 'Çalışma Süresi']}
+                />
+                <Bar dataKey="value" fill="#3b82f6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Points Trend */}
+          <Card>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Puan Trendi (14 Gün)</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={pointsTrend}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip
+                  formatter={(value) => [`${value} puan`, 'Kazanılan Puan']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="points"
+                  stroke="#8b5cf6"
+                  strokeWidth={2}
+                  dot={{ fill: '#8b5cf6', strokeWidth: 2, r: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Completion Rate */}
+          <Card>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Tamamlanma Oranı</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={completionData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(Number(percent) * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {completionData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
           </Card>
         </div>
       )}

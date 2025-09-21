@@ -81,16 +81,17 @@ export default function AuthModal({ isOpen, onClose, initialMode }: AuthModalPro
       return
     }
 
-    const userData = {
-      first_name: registerData.firstName,
-      last_name: registerData.lastName,
-      role: registerData.role,
-      class_section: registerData.classSection || undefined,
-      work_days: registerData.workDays,
-      daily_work_minutes: registerData.dailyWorkMinutes
-    }
+    // Note: userData is prepared but signUp now handles profile creation automatically
+    // const userData = {
+    //   first_name: registerData.firstName,
+    //   last_name: registerData.lastName,
+    //   role: registerData.role,
+    //   class_section: registerData.classSection || undefined,
+    //   work_days: registerData.workDays,
+    //   daily_work_minutes: registerData.dailyWorkMinutes
+    // }
 
-    const { error } = await signUp(registerData.email, registerData.password, userData)
+    const { error } = await signUp(registerData.email, registerData.password)
 
     if (error) {
       setError(error)

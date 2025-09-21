@@ -22,7 +22,7 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (email: string, password: string, userData: Partial<Profile>) => Promise<{ error?: string }>
+  signUp: (email: string, password: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>
 }
@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession()
         setUser(session?.user ?? null)
         if (session?.user) {
+          await ensureProfileExists(session.user.id)
           await fetchProfile(session.user.id)
         }
       }
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         async (event: string, session: Session | null) => {
           setUser(session?.user ?? null)
           if (session?.user) {
+            await ensureProfileExists(session.user.id)
             await fetchProfile(session.user.id)
           } else {
             setProfile(null)
@@ -89,37 +91,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const ensureProfileExists = async (userId: string) => {
+    if (!supabase) return
+
+    try {
+      // Profil var mı kontrol et
+      const { data: existingProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .single()
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking profile:', fetchError)
+        return
+      }
+
+      // Profil yoksa oluştur
+      if (!existingProfile) {
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            first_name: '',
+            last_name: '',
+            role: 'student'
+          })
+
+        if (insertError) {
+          console.error('Error creating profile:', insertError)
+        } else {
+          console.log('✅ Profile created for user:', userId)
+        }
+      }
+    } catch (error) {
+      console.error('Error in ensureProfileExists:', error)
+    }
+  }
+
   const signIn = async (email: string, password: string) => {
     if (!auth) return { error: 'Authentication not available' }
 
     try {
+      console.log('Signing in with:', email)
       const result = await auth.signIn(email, password)
-      return { error: result.error?.message }
-    } catch {
+      console.log('Sign in result:', result)
+
+      if (result.error) {
+        console.error('Sign in error:', result.error)
+        return { error: result.error.message }
+      }
+
+      // Giriş başarılı oldu, profil kontrolü yap
+      if (result.data.user && supabase) {
+        console.log('Ensuring profile exists for:', result.data.user.id)
+        await ensureProfileExists(result.data.user.id)
+      }
+
+      console.log('Sign in successful')
+      return { error: undefined }
+    } catch (error) {
+      console.error('Sign in exception:', error)
       return { error: 'Giriş yapılırken bir hata oluştu' }
     }
   }
 
-  const signUp = async (email: string, password: string, userData: Partial<Profile>) => {
+  const signUp = async (email: string, password: string) => {
     if (!auth) return { error: 'Authentication not available' }
 
     try {
       const result = await auth.signUp(email, password)
       if (result.error) {
-        return { error: result.error.message }
+        console.error('Supabase Auth Error:', result.error)
+        return { error: `Kayıt hatası: ${result.error.message}` }
       }
 
+      // Auth başarılı oldu, profil oluştur
       if (result.data.user && supabase) {
-        // Update profile with additional data
-        const profileResult = await supabase
-          .from('profiles')
-          .update(userData)
-          .eq('id', result.data.user.id)
-
-        if (profileResult.error) {
-          return { error: 'Profil güncellenirken hata oluştu' }
-        }
+        await ensureProfileExists(result.data.user.id)
       }
+
+      console.log('✅ Kullanıcı başarıyla oluşturuldu:', result.data.user?.email)
+
+      return {}
 
       return {}
     } catch {

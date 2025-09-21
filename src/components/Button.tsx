@@ -4,7 +4,7 @@ interface ButtonProps {
   children: ReactNode
   onClick?: () => void
   disabled?: boolean
-  variant?: 'primary' | 'secondary' | 'danger' | 'success'
+  variant?: 'primary' | 'secondary' | 'purple' | 'danger' | 'success'
   size?: 'sm' | 'md' | 'lg'
   className?: string
   type?: 'button' | 'submit' | 'reset'
@@ -22,10 +22,11 @@ export default function Button({
   const baseClasses = 'font-medium rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2'
 
   const variantClasses = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500',
-    secondary: 'bg-gray-600 hover:bg-gray-700 text-white focus:ring-gray-500',
-    danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500',
-    success: 'bg-green-600 hover:bg-green-700 text-white focus:ring-green-500'
+    primary: 'bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 focus:ring-green-500',
+    secondary: 'bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 focus:ring-green-500',
+    purple: 'bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 focus:ring-green-500',
+    danger: 'bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 focus:ring-green-500',
+    success: 'bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 focus:ring-green-500'
   }
 
   const sizeClasses = {
