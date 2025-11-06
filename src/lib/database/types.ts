@@ -31,6 +31,7 @@ export interface WorkSession {
 export interface Message {
   id: string
   user_id: string
+  receiver_id: string
   content: string
   created_at: string
   profiles?: Profile

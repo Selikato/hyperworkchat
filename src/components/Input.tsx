@@ -13,6 +13,7 @@ interface InputProps {
   min?: string
   max?: string
   step?: string
+  maxLength?: number
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(({
@@ -27,7 +28,8 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
   className = '',
   min,
   max,
-  step
+  step,
+  maxLength
 }, ref) => {
   return (
     <div className="w-full">
@@ -48,6 +50,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(({
         min={min}
         max={max}
         step={step}
+        maxLength={maxLength}
         className={`
           w-full px-3 py-2 border rounded-lg shadow-sm text-gray-900 placeholder-gray-500
           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent

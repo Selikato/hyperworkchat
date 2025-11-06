@@ -6,9 +6,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholde
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
-    persistSession: true,
-    // Email confirmation'ı bypass etmek için
-    flowType: 'pkce'
+    persistSession: true
+    // Email confirmation artık aktif - flowType kaldırıldı
   },
   global: {
     headers: {

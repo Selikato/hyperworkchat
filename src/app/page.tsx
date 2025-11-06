@@ -30,10 +30,10 @@ export default function Home() {
   }, [])
 
   if (!supabaseReady) {
-    return (
+  return (
       <div className="min-h-screen bg-gray-50 py-8">
         <TestSupabase />
-      </div>
+        </div>
     )
   }
 
@@ -41,7 +41,7 @@ export default function Home() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+    </div>
     )
   }
 

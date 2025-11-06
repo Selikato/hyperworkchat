@@ -41,12 +41,15 @@ CREATE TABLE work_sessions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- Messages table for chat
+-- Messages table for DM chat
 CREATE TABLE messages (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  receiver_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
   content TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  -- Ensure users can't send messages to themselves
+  CHECK (user_id != receiver_id)
 );
 
 -- Selected students table for teachers
@@ -61,17 +64,17 @@ CREATE TABLE selected_students (
 
 -- Row Level Security Policies
 
--- Profiles policies - Temporarily disabled for testing
--- ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+-- Profiles policies
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
--- CREATE POLICY "Users can view all profiles" ON profiles
---   FOR SELECT USING (true);
+CREATE POLICY "Users can view all profiles" ON profiles
+  FOR SELECT USING (true);
 
--- CREATE POLICY "Users can insert their own profile" ON profiles
---   FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can insert their own profile" ON profiles
+  FOR INSERT WITH CHECK (auth.uid() = id OR auth.uid() IS NULL OR auth.jwt() ->> 'role' = 'service_role');
 
--- CREATE POLICY "Users can update their own profile" ON profiles
---   FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can update their own profile" ON profiles
+  FOR UPDATE USING (auth.uid() = id);
 
 -- Work sessions policies
 ALTER TABLE work_sessions ENABLE ROW LEVEL SECURITY;
@@ -88,10 +91,10 @@ CREATE POLICY "Users can update their own work sessions" ON work_sessions
 -- Messages policies
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view all messages" ON messages
-  FOR SELECT USING (true);
+CREATE POLICY "Users can view their DM messages" ON messages
+  FOR SELECT USING (auth.uid() = user_id OR auth.uid() = receiver_id);
 
-CREATE POLICY "Users can insert their own messages" ON messages
+CREATE POLICY "Users can send DM messages" ON messages
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Selected students policies
@@ -115,12 +118,41 @@ CREATE POLICY "Teachers can insert selected students" ON selected_students
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Trigger SECURITY DEFINER ile çalışır, RLS bypass eder
   INSERT INTO public.profiles (id, first_name, last_name, role)
   VALUES (NEW.id, '', '', 'student'::user_role)
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- Manual profile creation function (for fallback when trigger fails)
+CREATE OR REPLACE FUNCTION public.create_profile_manual(
+  user_id UUID,
+  first_name TEXT DEFAULT '',
+  last_name TEXT DEFAULT '',
+  user_role user_role DEFAULT 'student',
+  class_section TEXT DEFAULT NULL,
+  work_days TEXT[] DEFAULT ARRAY[]::TEXT[],
+  daily_work_minutes INTEGER DEFAULT 0
+)
+RETURNS VOID AS $$
+BEGIN
+  -- SECURITY DEFINER ile RLS'yi bypass eder
+  INSERT INTO public.profiles (
+    id, first_name, last_name, role, class_section, work_days, daily_work_minutes
+  ) VALUES (
+    user_id, first_name, last_name, user_role, class_section, work_days, daily_work_minutes
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    first_name = EXCLUDED.first_name,
+    last_name = EXCLUDED.last_name,
+    role = EXCLUDED.role,
+    class_section = EXCLUDED.class_section,
+    work_days = EXCLUDED.work_days,
+    daily_work_minutes = EXCLUDED.daily_work_minutes;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Trigger to create profile on user signup
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;

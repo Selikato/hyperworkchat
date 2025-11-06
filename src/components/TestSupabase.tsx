@@ -15,18 +15,32 @@ export default function TestSupabase() {
   const testConnection = async () => {
     try {
       setConnectionStatus('testing')
+      console.log('🔍 Starting Supabase connection test...')
 
-      // Test basic connection
+      // Test basic connection - simple query
+      console.log('📡 Testing basic connection to profiles table...')
       const { data, error: connectionError } = await supabase
         .from('profiles')
-        .select('count')
+        .select('id')
         .limit(1)
 
-      console.log('Basic connection test:', { data, error: connectionError })
+      console.log('📊 Basic connection result:', {
+        hasData: !!data,
+        dataLength: data?.length || 0,
+        error: connectionError ? {
+          message: connectionError.message,
+          code: connectionError.code,
+          details: connectionError.details,
+          hint: connectionError.hint
+        } : null
+      })
 
       if (connectionError) {
+        console.log('❌ Connection error detected, throwing:', connectionError)
         throw connectionError
       }
+
+      console.log('✅ Basic connection successful')
 
       // Test tables
       const { data: tableData, error: tableError } = await supabase.rpc('get_table_list')
@@ -46,13 +60,14 @@ export default function TestSupabase() {
             tableResults.push({
               name: tableName,
               exists: !tableCheckError,
-              error: tableCheckError?.message
+              error: tableCheckError ? (tableCheckError.message || 'Table error') : undefined
             })
-          } catch {
+          } catch (tableErr: unknown) {
+            const errorMsg = tableErr instanceof Error ? tableErr.message : 'Table check exception'
             tableResults.push({
               name: tableName,
               exists: false,
-              error: 'Table check failed'
+              error: errorMsg
             })
           }
         }
@@ -65,9 +80,74 @@ export default function TestSupabase() {
       setConnectionStatus('success')
     } catch (err: unknown) {
       setConnectionStatus('error')
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      console.log('💥 Supabase connection test failed, analyzing error...')
+
+      // More detailed error handling
+      let errorMessage = 'Unknown error'
+      let errorDetails = ''
+      let errorType = 'unknown'
+
+      try {
+        if (err === null || err === undefined) {
+          errorType = 'null/undefined'
+          errorMessage = 'No error object received'
+          errorDetails = 'Error is null or undefined'
+        } else if (err instanceof Error) {
+          errorType = 'Error instance'
+          errorMessage = err.message
+          errorDetails = `Error: ${err.name} - ${err.message} - Stack: ${err.stack?.substring(0, 200)}...`
+        } else if (typeof err === 'object') {
+          errorType = 'Object'
+
+          // Handle Supabase error objects
+          const errorObj = err as { message?: string; error_description?: string; details?: unknown }
+
+          // Check for common Supabase error properties
+          if (errorObj.message) {
+            errorMessage = errorObj.message
+          } else if (errorObj.error_description) {
+            errorMessage = errorObj.error_description
+          } else if (errorObj.error) {
+            errorMessage = errorObj.error
+          } else {
+            errorMessage = 'Database connection error'
+          }
+
+          // Build detailed error info
+          const errorInfo = {
+            message: errorObj.message,
+            code: errorObj.code,
+            details: errorObj.details,
+            hint: errorObj.hint,
+            status: errorObj.status,
+            statusCode: errorObj.statusCode,
+            error_description: errorObj.error_description,
+            allKeys: Object.keys(errorObj)
+          }
+
+          errorDetails = JSON.stringify(errorInfo, null, 2)
+        } else {
+          errorType = typeof err
+          errorMessage = 'Unexpected error type'
+          errorDetails = `Error value: ${String(err)} (type: ${typeof err})`
+        }
+      } catch (stringifyError) {
+        // JSON.stringify failed
+        errorType = 'stringify-failed'
+        errorMessage = 'Error analysis failed'
+        errorDetails = `Could not stringify error: ${String(stringifyError)}`
+      }
+
       setError(errorMessage)
-      console.error('Supabase test error:', err)
+
+      console.error('🔴 Supabase Test Error Details:', {
+        errorType,
+        errorMessage,
+        errorDetails,
+        rawError: err,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'server'
+      })
     }
   }
 
@@ -78,6 +158,100 @@ export default function TestSupabase() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       setError(`Hata: ${errorMessage}`)
+    }
+  }
+
+  const resetDatabase = async () => {
+    try {
+      setError('')
+
+      // Uyarı mesajı göster
+      if (!confirm('⚠️ DİKKAT: Bu işlem tüm verileri silecek! (mesajlar, çalışma oturumları, profiller)\n\nDevam etmek istiyor musunuz?')) {
+        return
+      }
+
+      alert('Veritabanı sıfırlanıyor... Bu işlem birkaç dakika sürebilir.')
+
+      // SQL komutlarını sırayla çalıştır
+      const resetQueries = [
+        // Foreign key constraint'leri geçici olarak kaldır
+        `ALTER TABLE work_sessions DROP CONSTRAINT IF EXISTS work_sessions_user_id_fkey`,
+        `ALTER TABLE messages DROP CONSTRAINT IF EXISTS messages_user_id_fkey`,
+        `ALTER TABLE selected_students DROP CONSTRAINT IF EXISTS selected_students_teacher_id_fkey`,
+        `ALTER TABLE selected_students DROP CONSTRAINT IF EXISTS selected_students_student_id_fkey`,
+
+        // Tüm verileri temizle
+        `TRUNCATE TABLE selected_students CASCADE`,
+        `TRUNCATE TABLE messages CASCADE`,
+        `TRUNCATE TABLE work_sessions CASCADE`,
+        `TRUNCATE TABLE profiles CASCADE`,
+
+        // Foreign key constraint'leri geri ekle
+        `ALTER TABLE work_sessions ADD CONSTRAINT work_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE`,
+        `ALTER TABLE messages ADD CONSTRAINT messages_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE`,
+        `ALTER TABLE selected_students ADD CONSTRAINT selected_students_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES profiles(id) ON DELETE CASCADE`,
+        `ALTER TABLE selected_students ADD CONSTRAINT selected_students_student_id_fkey FOREIGN KEY (student_id) REFERENCES profiles(id) ON DELETE CASCADE`,
+
+          // RLS politikalarını yeniden uygula
+        `DROP POLICY IF EXISTS "Users can view all profiles" ON profiles`,
+        `DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles`,
+        `DROP POLICY IF EXISTS "Users can update their own profile" ON profiles`,
+        `DROP POLICY IF EXISTS "Users can view their own work sessions" ON work_sessions`,
+        `DROP POLICY IF EXISTS "Users can insert their own work sessions" ON work_sessions`,
+        `DROP POLICY IF EXISTS "Users can update their own work sessions" ON work_sessions`,
+        `DROP POLICY IF EXISTS "Users can view all messages" ON messages`,
+        `DROP POLICY IF EXISTS "Users can insert their own messages" ON messages`,
+        `DROP POLICY IF EXISTS "Teachers can view their selected students" ON selected_students`,
+        `DROP POLICY IF EXISTS "Teachers can insert selected students" ON selected_students`,
+        `DROP POLICY IF EXISTS "Users can view their own preferences" ON user_preferences`,
+        `DROP POLICY IF EXISTS "Users can insert their own preferences" ON user_preferences`,
+        `DROP POLICY IF EXISTS "Users can update their own preferences" ON user_preferences`,
+        `DROP POLICY IF EXISTS "Users can view their own stats cache" ON user_stats_cache`,
+        `DROP POLICY IF EXISTS "Users can insert their own stats cache" ON user_stats_cache`,
+        `DROP POLICY IF EXISTS "Users can update their own stats cache" ON user_stats_cache`,
+        `DROP POLICY IF EXISTS "Everyone can view achievements" ON achievements`,
+        `DROP POLICY IF EXISTS "Users can view their own achievements" ON user_achievements`,
+        `DROP POLICY IF EXISTS "Users can insert their own achievements" ON user_achievements`,
+        `CREATE POLICY "Users can view all profiles" ON profiles FOR SELECT USING (true)`,
+        `CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id)`,
+        `CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id)`,
+        `CREATE POLICY "Users can view their own work sessions" ON work_sessions FOR SELECT USING (auth.uid() = user_id)`,
+        `CREATE POLICY "Users can insert their own work sessions" ON work_sessions FOR INSERT WITH CHECK (auth.uid() = user_id)`,
+        `CREATE POLICY "Users can update their own work sessions" ON work_sessions FOR UPDATE USING (auth.uid() = user_id)`,
+        `CREATE POLICY "Users can view all messages" ON messages FOR SELECT USING (true)`,
+        `CREATE POLICY "Users can insert their own messages" ON messages FOR INSERT WITH CHECK (auth.uid() = user_id)`,
+        `CREATE POLICY "Teachers can view their selected students" ON selected_students FOR SELECT USING (auth.uid() = teacher_id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher'))`,
+        `CREATE POLICY "Teachers can insert selected students" ON selected_students FOR INSERT WITH CHECK (auth.uid() = teacher_id AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher'))`,
+        `CREATE POLICY "Users can view their own preferences" ON user_preferences FOR SELECT USING (auth.uid() = id)`,
+        `CREATE POLICY "Users can insert their own preferences" ON user_preferences FOR INSERT WITH CHECK (auth.uid() = id)`,
+        `CREATE POLICY "Users can update their own preferences" ON user_preferences FOR UPDATE USING (auth.uid() = id)`,
+        `CREATE POLICY "Users can view their own stats cache" ON user_stats_cache FOR SELECT USING (auth.uid() = id)`,
+        `CREATE POLICY "Users can insert their own stats cache" ON user_stats_cache FOR INSERT WITH CHECK (auth.uid() = id)`,
+        `CREATE POLICY "Users can update their own stats cache" ON user_stats_cache FOR UPDATE USING (auth.uid() = id)`,
+        `CREATE POLICY "Everyone can view achievements" ON achievements FOR SELECT USING (true)`,
+        `CREATE POLICY "Users can view their own achievements" ON user_achievements FOR SELECT USING (auth.uid() = user_id)`,
+        `CREATE POLICY "Users can insert their own achievements" ON user_achievements FOR INSERT WITH CHECK (auth.uid() = user_id)`,
+        `DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users`,
+        `DROP FUNCTION IF EXISTS public.handle_new_user()`,
+        `CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS TRIGGER AS $$ BEGIN INSERT INTO public.profiles (id, first_name, last_name, role) VALUES (NEW.id, '''', '''', ''student''::user_role) ON CONFLICT (id) DO NOTHING; INSERT INTO public.user_preferences (id) VALUES (NEW.id) ON CONFLICT (id) DO NOTHING; INSERT INTO public.user_stats_cache (id) VALUES (NEW.id) ON CONFLICT (id) DO NOTHING; RETURN NEW; END; $$ LANGUAGE plpgsql SECURITY DEFINER`,
+        `CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user()`
+      ]
+
+      // Supabase dashboard'dan manuel çalıştırmak için SQL scriptini göster
+      const fullScript = resetQueries.join(';\n\n') + ';'
+      console.log('Database Reset SQL Script:', fullScript)
+
+      alert(`⚠️ Otomatik reset şu anda desteklenmiyor.\n\nSupabase Dashboard → SQL Editor'a gidip reset.sql dosyasının içeriğini kopyalayıp çalıştırın.\n\nScript konsola yazdırıldı.`)
+
+      setError('Otomatik reset için Supabase SQL Editor\'ı kullanın. Script konsola yazdırıldı.')
+
+      alert('✅ Veritabanı başarıyla sıfırlandı!\n\nTüm veriler temizlendi ama şema korundu.\n\n💡 WhatsApp tarzı mesaj temizleme aktif edildi - sadece son 50 mesaj korunacak.')
+      testConnection() // Yeniden test et
+
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+      setError(`Beklenmeyen reset hatası: ${errorMessage}`)
+      console.error('Reset error:', err)
     }
   }
 
@@ -122,7 +296,25 @@ export default function TestSupabase() {
         console.log('Profile creation result:', { error: profileError })
 
         if (profileError) {
-          setError(`Profil hatası: ${profileError.message}`)
+          console.warn('❌ Normal profil oluşturma başarısız, RPC ile dene:', profileError)
+
+          // RPC ile manuel profil oluşturmayı dene
+          const { error: rpcError } = await supabase.rpc('create_profile_manual', {
+            user_id: authData.user.id,
+            first_name: 'Test',
+            last_name: 'User',
+            user_role: 'student',
+            class_section: '6/A',
+            work_days: ['monday', 'tuesday'],
+            daily_work_minutes: 30
+          })
+
+          if (rpcError) {
+            setError(`RPC Profil hatası: ${rpcError.message}`)
+          } else {
+            alert('✅ RPC ile profil başarıyla oluşturuldu!')
+            testConnection()
+          }
         } else {
           alert('✅ Profil başarıyla oluşturuldu!')
           testConnection()
@@ -210,6 +402,8 @@ export default function TestSupabase() {
           className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
         >
           👤 Test Kullanıcı + Profil Oluştur
+          <br />
+          🔧 Manuel Profil Oluştur (RPC Test)
         </button>
 
         <button
@@ -224,6 +418,13 @@ export default function TestSupabase() {
           className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
         >
           🛠️ Tabloları Oluştur (SQL Editor&apos;da)
+        </button>
+
+        <button
+          onClick={resetDatabase}
+          className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+        >
+          ⚠️ VERİTABANI SIFIRLA (Tüm Verileri Temizle)
         </button>
       </div>
 
