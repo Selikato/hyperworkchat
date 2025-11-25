@@ -22,9 +22,10 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error?: string }>
-  signUp: (email: string, password: string) => Promise<{ error?: string; success?: boolean; user?: any }>
+  signUp: (email: string, password: string) => Promise<{ error?: string; success?: boolean; user?: { id: string; email: string; firstName: string; lastName: string; role: string; classSection: string } }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>
+  updateUserInfo: (userId: string, info: { firstName?: string; lastName?: string; role?: string; classSection?: string; workDays?: string[]; dailyWorkMinutes?: number }) => Promise<{ error?: string }>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -56,23 +57,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
-      if (supabase) {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        if (error) {
-          console.error('Error getting session:', error)
+    // Mock sistemde localStorage'dan giriş bilgilerini yükle
+    const loadMockSession = () => {
+      try {
+        const mockUser = localStorage.getItem('mockCurrentUser')
+        if (mockUser) {
+          const user = JSON.parse(mockUser)
+          setUser(user)
+
+        // Mock profile oluştur
+        const mockProfile = {
+          id: user.id,
+          first_name: user.user_metadata.first_name,
+          last_name: user.user_metadata.last_name,
+          role: user.user_metadata.role,
+          class_section: user.user_metadata.class_section,
+          work_days: [],
+          daily_work_minutes: 0,
+          total_points: 0,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          await ensureProfileExists(session.user.id)
-          await fetchProfile(session.user.id)
+          setProfile(mockProfile)
         }
+      } catch (error) {
+        console.error('Error loading mock session:', error)
       }
       setLoading(false)
     }
 
-    getInitialSession()
+    loadMockSession()
 
     // Set up periodic session refresh (every 30 minutes)
     const refreshInterval = setInterval(refreshSession, 30 * 60 * 1000)
@@ -206,85 +220,97 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const signIn = async (email: string, password: string) => {
-    if (!auth) return { error: 'Authentication not available' }
-
+    // Mock authentication - localStorage'dan kontrol et
     try {
       console.log('🔐 Attempting sign in for:', email)
-      console.log('📧 Email format valid:', /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      console.log('🔑 Password length:', password.length)
 
-      const result = await auth.signIn(email, password)
-      console.log('🔍 Sign in raw result:', JSON.stringify(result, null, 2))
+      const users = JSON.parse(localStorage.getItem('mockUsers') || '[]')
+      const user = users.find((u: { email: string; password: string; id: string; firstName: string; lastName: string; role: string; classSection: string }) => u.email === email && u.password === password)
 
-      if (result.error) {
-        console.error('❌ Sign in error details:', {
-          message: result.error.message,
-          status: result.error.status,
-          code: result.error.code
-        })
+      if (!user) {
+        return { error: 'Geçersiz giriş bilgileri' }
+      }
 
-        // Özel hata mesajları
-        if (result.error.message.includes('Invalid login credentials')) {
-          console.log('⚠️ Invalid credentials - checking if user exists...')
-          // Kullanıcının var olup olmadığını kontrol et
-          const { data: userExists } = await supabase
-            .from('auth.users')
-            .select('id')
-            .eq('email', email)
-            .single()
-          console.log('👤 User exists in auth.users:', !!userExists)
+      console.log('✅ Mock sign in successful for user:', user.email)
+
+      // Mock user oluştur
+      const mockUser = {
+        id: user.id,
+        email: user.email,
+        user_metadata: {
+          first_name: user.firstName,
+          last_name: user.lastName,
+          role: user.role,
+          class_section: user.classSection
         }
-
-        return { error: result.error.message }
       }
 
-      console.log('✅ Sign in successful for user:', result.data.user?.email)
+      // localStorage'a kaydet
+      localStorage.setItem('mockCurrentUser', JSON.stringify(mockUser))
 
-      // Giriş başarılı oldu, profil kontrolü yap
-      if (result.data.user && supabase) {
-        console.log('🔍 Ensuring profile exists for:', result.data.user.id)
-        await ensureProfileExists(result.data.user.id)
+      setUser(mockUser as User)
+
+      // Mock profile oluştur
+      const mockProfile = {
+        id: user.id,
+        first_name: user.firstName,
+        last_name: user.lastName,
+        role: user.role,
+        class_section: user.classSection,
+        work_days: user.workDays || [],
+        daily_work_minutes: user.dailyWorkMinutes || 0
       }
+
+      setProfile(mockProfile)
 
       return { error: undefined }
     } catch (error) {
-      console.error('💥 Sign in exception:', error)
+      console.error('💥 Mock sign in exception:', error)
       return { error: 'Giriş yapılırken bir hata oluştu' }
     }
   }
 
   const signUp = async (email: string, password: string) => {
-    if (!auth) return { error: 'Authentication not available' }
-
+    // Mock registration - localStorage'a kaydet
     try {
-      console.log('🔐 Attempting sign up for:', email, password)
+      console.log('🔐 Attempting mock sign up for:', email)
 
-      // Basit Supabase signUp çağrısı
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: password
-      })
+      const users = JSON.parse(localStorage.getItem('mockUsers') || '[]')
 
-      console.log('🔍 Sign up result:', { data, error })
-
-      if (error) {
-        console.error('❌ Supabase Auth Error:', error)
-        return { error: `Kayıt hatası: ${error.message}` }
+      // Email zaten var mı kontrol et
+      const existingUser = users.find((u: { email: string }) => u.email === email)
+      if (existingUser) {
+        return { error: 'Bu email adresi zaten kayıtlı' }
       }
 
-      console.log('✅ Auth successful for user:', data.user?.email)
-      return { success: true, user: data.user }
+      // Yeni kullanıcı oluştur
+      const newUser: { id: string; email: string; firstName: string; lastName: string; role: string; classSection: string } = {
+        id: 'mock-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        email: email.trim(),
+        firstName: '',
+        lastName: '',
+        role: 'student',
+        classSection: ''
+      }
+
+      users.push(newUser)
+      localStorage.setItem('mockUsers', JSON.stringify(users))
+
+      console.log('✅ Mock registration successful for user:', newUser.email)
+      return { success: true, user: newUser }
 
     } catch (error) {
-      console.error('💥 Sign up exception:', error)
+      console.error('💥 Mock sign up exception:', error)
       return { error: 'Kayıt olurken bir hata oluştu' }
     }
   }
 
   const signOut = async () => {
-    if (auth) {
-      await auth.signOut()
-    }
+    // Mock sign out - state'leri ve localStorage'ı temizle
+    setUser(null)
+    setProfile(null)
+    localStorage.removeItem('mockCurrentUser')
+    console.log('✅ Mock sign out successful')
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
@@ -309,6 +335,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const updateUserInfo = async (userId: string, info: { firstName?: string; lastName?: string; role?: string; classSection?: string; workDays?: string[]; dailyWorkMinutes?: number }) => {
+    // Mock user info update - localStorage'da güncelle
+    try {
+      const users = JSON.parse(localStorage.getItem('mockUsers') || '[]')
+      const userIndex = users.findIndex((u: { id: string }) => u.id === userId)
+
+      if (userIndex === -1) {
+        return { error: 'Kullanıcı bulunamadı' }
+      }
+
+      // Kullanıcı bilgilerini güncelle
+      users[userIndex] = { ...users[userIndex], ...info }
+      localStorage.setItem('mockUsers', JSON.stringify(users))
+
+      // Eğer şu an giriş yapmış kullanıcıysa state'i güncelle
+      if (user && user.id === userId) {
+        const mockUser = {
+          id: users[userIndex].id,
+          email: users[userIndex].email,
+          user_metadata: {
+            first_name: users[userIndex].firstName,
+            last_name: users[userIndex].lastName,
+            role: users[userIndex].role,
+            class_section: users[userIndex].classSection
+          }
+        }
+
+        setUser(mockUser as User)
+
+        const mockProfile = {
+          id: users[userIndex].id,
+          first_name: users[userIndex].firstName,
+          last_name: users[userIndex].lastName,
+          role: users[userIndex].role,
+          class_section: users[userIndex].classSection,
+          work_days: users[userIndex].workDays || [],
+          daily_work_minutes: users[userIndex].dailyWorkMinutes || 0,
+          total_points: 0,
+          created_at: users[userIndex].createdAt || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        setProfile(mockProfile)
+      }
+
+      return {}
+    } catch (error) {
+      console.error('💥 Update user info exception:', error)
+      return { error: 'Kullanıcı bilgileri güncellenirken hata oluştu' }
+    }
+  }
+
   const value = {
     user,
     profile,
@@ -316,7 +394,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signUp,
     signOut,
-    updateProfile
+    updateProfile,
+    updateUserInfo
   }
 
   return (

@@ -29,7 +29,7 @@ export default function ExamTimer() {
   const [isRunning, setIsRunning] = useState(false)
   const [examDuration, setExamDuration] = useState<number>(60) // dakika
   const [results, setResults] = useState<ExamResult[]>([])
-  const [students, setStudents] = useState<{ id: string; first_name: string; last_name: string }[]>([])
+  const [students, setStudents] = useState<{ id: string; name: string }[]>([])
 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -51,18 +51,19 @@ export default function ExamTimer() {
     const mockUser = { id: 'mock-teacher', email: 'teacher@mock.com' }
     setUser(mockUser)
 
-    // Mock role
-    setUserRole('teacher')
-    loadStudents()
-    setupRealtimeSubscription()
+      // Mock role
+      setUserRole('teacher')
+      loadStudents()
+      setupRealtimeSubscription()
+    }
   }
 
   const loadStudents = async () => {
     // Mock students
     const mockStudents = [
-      { id: '1', first_name: 'Ahmet', last_name: 'Yavuz' },
-      { id: '2', first_name: 'Berat', last_name: '' },
-      { id: '3', first_name: 'Ekrem', last_name: '' }
+      { id: '1', name: 'Ahmet Yavuz' },
+      { id: '2', name: 'Berat' },
+      { id: '3', name: 'Ekrem' }
     ]
     setStudents(mockStudents)
   }

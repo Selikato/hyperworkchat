@@ -3,7 +3,7 @@
 import { useAuth } from '@/contexts/AuthContext'
 import Button from './Button'
 
-type Tab = 'timer' | 'chat' | 'leaderboard' | 'profile' | 'history' | 'teacher' | 'random' | 'exam'
+type Tab = 'timer' | 'chat' | 'leaderboard' | 'profile' | 'history' | 'teacher' | 'random'
 
 interface NavigationProps {
   activeTab: Tab
@@ -21,7 +21,6 @@ const tabs = [
 const teacherTabs = [
   { id: 'teacher' as Tab, label: 'Öğrenci Yönetimi', icon: '👥' },
   { id: 'random' as Tab, label: 'Rastgele Seçme', icon: '🎲' },
-  { id: 'exam' as Tab, label: 'Sınav Sistemi', icon: '📝' },
 ]
 
 export default function Navigation({ activeTab, onTabChange }: NavigationProps) {
