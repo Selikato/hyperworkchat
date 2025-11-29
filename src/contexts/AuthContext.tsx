@@ -237,6 +237,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const mockUser = {
         id: user.id,
         email: user.email,
+        app_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
         user_metadata: {
           first_name: user.firstName,
           last_name: user.lastName,
@@ -248,7 +251,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // localStorage'a kaydet
       localStorage.setItem('mockCurrentUser', JSON.stringify(mockUser))
 
-      setUser(mockUser as User)
+      setUser(mockUser as unknown as User)
 
       // Mock profile oluştur
       const mockProfile = {
@@ -258,7 +261,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: user.role,
         class_section: user.classSection,
         work_days: user.workDays || [],
-        daily_work_minutes: user.dailyWorkMinutes || 0
+        daily_work_minutes: user.dailyWorkMinutes || 0,
+        total_points: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
       setProfile(mockProfile)
@@ -284,9 +290,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Yeni kullanıcı oluştur
-      const newUser: { id: string; email: string; firstName: string; lastName: string; role: string; classSection: string } = {
+      const newUser = {
         id: 'mock-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
         email: email.trim(),
+        password: password,
         firstName: '',
         lastName: '',
         role: 'student',
@@ -315,6 +322,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return { error: 'Kullanıcı bulunamadı' }
+
+    // Mock sistemde localStorage'da güncelle
+    try {
+      const users = JSON.parse(localStorage.getItem('mockUsers') || '[]')
+      const userIndex = users.findIndex((u: { id: string }) => u.id === user.id)
+
+      if (userIndex !== -1) {
+        // Convert Profile format (snake_case) to mock user format (camelCase)
+        const mockUpdates: any = {}
+        if (updates.first_name !== undefined) mockUpdates.firstName = updates.first_name
+        if (updates.last_name !== undefined) mockUpdates.lastName = updates.last_name
+        if (updates.class_section !== undefined) mockUpdates.classSection = updates.class_section
+        if (updates.work_days !== undefined) mockUpdates.workDays = updates.work_days
+        if (updates.daily_work_minutes !== undefined) mockUpdates.dailyWorkMinutes = updates.daily_work_minutes
+        if (updates.total_points !== undefined) mockUpdates.totalPoints = updates.total_points
+
+        // Kullanıcı bilgilerini güncelle
+        users[userIndex] = { ...users[userIndex], ...mockUpdates }
+        localStorage.setItem('mockUsers', JSON.stringify(users))
+
+        // Mock user ve profile state'lerini güncelle
+        const mockUser = {
+          id: users[userIndex].id,
+          email: users[userIndex].email,
+          app_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString(),
+          user_metadata: {
+            first_name: users[userIndex].firstName,
+            last_name: users[userIndex].lastName,
+            role: users[userIndex].role,
+            class_section: users[userIndex].classSection
+          }
+        }
+
+        setUser(mockUser as unknown as User)
+
+        const mockProfile = {
+          id: users[userIndex].id,
+          first_name: users[userIndex].firstName,
+          last_name: users[userIndex].lastName,
+          role: users[userIndex].role,
+          class_section: users[userIndex].classSection,
+          work_days: users[userIndex].workDays || [],
+          daily_work_minutes: users[userIndex].dailyWorkMinutes || 0,
+          total_points: users[userIndex].totalPoints ?? profile?.total_points ?? 0,
+          created_at: users[userIndex].createdAt || profile?.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        setProfile(mockProfile)
+
+        // mockCurrentUser'ı da güncelle
+        localStorage.setItem('mockCurrentUser', JSON.stringify(mockUser))
+
+        return {}
+      }
+    } catch (e) {
+      console.warn('Error updating mock profile, falling back to Supabase:', e)
+    }
+
+    // Supabase'den güncelle (fallback)
     if (!supabase) return { error: 'Database not available' }
 
     try {
@@ -330,7 +399,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Update local state
       setProfile(prev => prev ? { ...prev, ...updates } : null)
       return {}
-    } catch {
+    } catch (err) {
+      console.warn('Error updating profile in Supabase:', err)
       return { error: 'Profil güncellenirken hata oluştu' }
     }
   }
@@ -354,6 +424,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const mockUser = {
           id: users[userIndex].id,
           email: users[userIndex].email,
+          app_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString(),
           user_metadata: {
             first_name: users[userIndex].firstName,
             last_name: users[userIndex].lastName,
@@ -362,7 +435,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        setUser(mockUser as User)
+        setUser(mockUser as unknown as User)
 
         const mockProfile = {
           id: users[userIndex].id,

@@ -76,19 +76,52 @@ export default function WorkHistory() {
     const fetchWorkHistory = async () => {
       setLoading(true)
 
-      const { data, error } = await supabase
-        .from('work_sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(100)
+      // Mock sistemde work sessions'ları localStorage'dan yükle
+      const storedSessions = localStorage.getItem(`work_sessions_${user.id}`)
+      if (storedSessions) {
+        try {
+          const parsedSessions = JSON.parse(storedSessions)
+          // En yeni olanları önce göster
+          const sortedSessions = parsedSessions
+            .sort((a: WorkSession, b: WorkSession) => 
+              new Date(b.created_at || b.start_time).getTime() - new Date(a.created_at || a.start_time).getTime()
+            )
+            .slice(0, 100)
+          
+          setSessions(sortedSessions)
+          calculateStats(sortedSessions)
+          calculateChartData(sortedSessions)
+          setLoading(false)
+          return
+        } catch (e) {
+          console.warn('Error parsing mock work sessions, falling back to Supabase:', e)
+        }
+      }
 
-      if (error) {
-        console.error('Error fetching work history:', error)
-      } else {
-        setSessions(data || [])
-        calculateStats(data || [])
-        calculateChartData(data || [])
+      // Supabase'den yükle
+      try {
+        const { data, error } = await supabase
+          .from('work_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(100)
+
+        if (error) {
+          console.warn('Error fetching work history from Supabase:', error)
+          setSessions([])
+          calculateStats([])
+          calculateChartData([])
+        } else {
+          setSessions(data || [])
+          calculateStats(data || [])
+          calculateChartData(data || [])
+        }
+      } catch (err) {
+        console.warn('Unexpected error fetching work history:', err)
+        setSessions([])
+        calculateStats([])
+        calculateChartData([])
       }
 
       setLoading(false)

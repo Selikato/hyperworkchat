@@ -23,6 +23,27 @@ export default function PomodoroTimer() {
   const [completedSessions, setCompletedSessions] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Save session to localStorage
+  const saveSessionToLocalStorage = (session: WorkSession) => {
+    if (!user) return
+    try {
+      const storedSessions = localStorage.getItem(`work_sessions_${user.id}`)
+      const sessions = storedSessions ? JSON.parse(storedSessions) : []
+      
+      // Check if session already exists, update it; otherwise add it
+      const existingIndex = sessions.findIndex((s: WorkSession) => s.id === session.id)
+      if (existingIndex >= 0) {
+        sessions[existingIndex] = session
+      } else {
+        sessions.push(session)
+      }
+      
+      localStorage.setItem(`work_sessions_${user.id}`, JSON.stringify(sessions))
+    } catch (error) {
+      console.warn('Error saving session to localStorage:', error)
+    }
+  }
+
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -38,24 +59,35 @@ export default function PomodoroTimer() {
     const plannedDuration = currentType === 'work' ? WORK_DURATION : BREAK_DURATION
 
     // Create work session in database
-    const { data: session, error } = await supabase
-      .from('work_sessions')
-      .insert({
-        user_id: user.id,
-        start_time: now.toISOString(),
-        planned_duration: plannedDuration,
-        is_completed: false,
-        was_paused: false
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error('Error creating work session:', error)
-      return
+    const session = {
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      start_time: now.toISOString(),
+      planned_duration: plannedDuration,
+      actual_duration: 0,
+      points_earned: 0,
+      is_completed: false,
+      was_paused: false,
+      created_at: now.toISOString()
     }
 
-    setCurrentSession(session)
+    try {
+      const { error } = await supabase
+        .from('work_sessions')
+        .insert(session)
+
+      if (error) {
+        // Mock sistemde tablo yoksa hata verebilir, bunu yutalım ve local çalışalım
+        console.warn('Could not save session to DB (might be missing table), continuing locally:', error)
+      }
+    } catch (err) {
+      console.warn('Error saving session:', err)
+    }
+
+    const workSession = session as WorkSession
+    setCurrentSession(workSession)
+    // Save to localStorage for mock system
+    saveSessionToLocalStorage(workSession)
     setTimerState(currentType === 'work' ? 'working' : 'break')
     setTimeLeft(plannedDuration)
     setWasPaused(false)
@@ -83,10 +115,18 @@ export default function PomodoroTimer() {
 
     // Update session in database
     if (currentSession) {
-      supabase
-        .from('work_sessions')
-        .update({ was_paused: true })
-        .eq('id', currentSession.id)
+      const updatedSession = { ...currentSession, was_paused: true }
+      try {
+        supabase
+          .from('work_sessions')
+          .update({ was_paused: true })
+          .eq('id', currentSession.id)
+      } catch (error) {
+        console.warn('Error updating session pause status:', error)
+      }
+      // Save to localStorage
+      saveSessionToLocalStorage(updatedSession)
+      setCurrentSession(updatedSession)
     }
   }
 
@@ -119,15 +159,28 @@ export default function PomodoroTimer() {
         : BREAK_DURATION - timeLeft
 
       // Update session with end time and 0 points
-      await supabase
-        .from('work_sessions')
-        .update({
-          end_time: now.toISOString(),
-          actual_duration: actualDuration,
-          points_earned: 0,
-          is_completed: false
-        })
-        .eq('id', currentSession.id)
+      const updatedSession = {
+        ...currentSession,
+        end_time: now.toISOString(),
+        actual_duration: actualDuration,
+        points_earned: 0,
+        is_completed: false
+      }
+      try {
+        await supabase
+          .from('work_sessions')
+          .update({
+            end_time: now.toISOString(),
+            actual_duration: actualDuration,
+            points_earned: 0,
+            is_completed: false
+          })
+          .eq('id', currentSession.id)
+      } catch (error) {
+        console.warn('Error updating session stop status:', error)
+      }
+      // Save to localStorage
+      saveSessionToLocalStorage(updatedSession)
     }
 
     resetTimer()
@@ -161,15 +214,28 @@ export default function PomodoroTimer() {
       ? WORK_DURATION - timeLeft
       : BREAK_DURATION - timeLeft
 
-    await supabase
-      .from('work_sessions')
-      .update({
-        end_time: now.toISOString(),
-        actual_duration: actualDuration,
-        points_earned: pointsEarned,
-        is_completed: true
-      })
-      .eq('id', currentSession.id)
+    const updatedSession = {
+      ...currentSession,
+      end_time: now.toISOString(),
+      actual_duration: actualDuration,
+      points_earned: pointsEarned,
+      is_completed: true
+    }
+    try {
+      await supabase
+        .from('work_sessions')
+        .update({
+          end_time: now.toISOString(),
+          actual_duration: actualDuration,
+          points_earned: pointsEarned,
+          is_completed: true
+        })
+        .eq('id', currentSession.id)
+    } catch (error) {
+      console.warn('Error updating session in DB:', error)
+    }
+    // Save to localStorage
+    saveSessionToLocalStorage(updatedSession)
 
     // Switch to next phase
     if (currentType === 'work') {
