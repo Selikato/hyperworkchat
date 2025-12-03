@@ -25,32 +25,87 @@ export default function Leaderboard() {
     const fetchLeaderboard = async () => {
       setLoading(true)
 
-      // Fetch students
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, total_points, class_section, role')
-        .eq('role', 'student')
-        .order('total_points', { ascending: false })
-        .limit(50)
+      // Mock sistemde kullanıcıları localStorage'dan yükle
+      const mockUsers = localStorage.getItem('mockUsers')
+      if (mockUsers) {
+        try {
+          const parsedUsers = JSON.parse(mockUsers)
+          
+          // Öğrencileri filtrele ve dönüştür
+          const mockStudents = parsedUsers
+            .filter((u: { role: string }) => u.role === 'student')
+            .map((u: { id: string; firstName: string; lastName: string; classSection: string; totalPoints?: number }) => ({
+              id: u.id,
+              first_name: u.firstName,
+              last_name: u.lastName,
+              total_points: u.totalPoints || 0,
+              class_section: u.classSection || null,
+              role: 'student' as const
+            }))
+            .sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.total_points - a.total_points)
+            .slice(0, 50)
 
-      if (studentsError) {
-        console.error('Error fetching students:', studentsError)
-      } else {
-        setStudents(studentsData || [])
+          // Öğretmenleri filtrele ve dönüştür
+          const mockTeachers = parsedUsers
+            .filter((u: { role: string }) => u.role === 'teacher')
+            .map((u: { id: string; firstName: string; lastName: string; totalPoints?: number }) => ({
+              id: u.id,
+              first_name: u.firstName,
+              last_name: u.lastName,
+              total_points: u.totalPoints || 0,
+              role: 'teacher' as const
+            }))
+            .sort((a: LeaderboardEntry, b: LeaderboardEntry) => b.total_points - a.total_points)
+            .slice(0, 50)
+
+          setStudents(mockStudents)
+          setTeachers(mockTeachers)
+          setLoading(false)
+          return
+        } catch (e) {
+          console.warn('Error parsing mock users, falling back to Supabase:', e)
+        }
       }
 
-      // Fetch teachers
-      const { data: teachersData, error: teachersError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, total_points, role')
-        .eq('role', 'teacher')
-        .order('total_points', { ascending: false })
-        .limit(50)
+      // Supabase'den yükle
+      try {
+        // Fetch students
+        const { data: studentsData, error: studentsError } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, total_points, class_section, role')
+          .eq('role', 'student')
+          .order('total_points', { ascending: false })
+          .limit(50)
 
-      if (teachersError) {
-        console.error('Error fetching teachers:', teachersError)
-      } else {
-        setTeachers(teachersData || [])
+        if (studentsError) {
+          console.warn('Error fetching students from Supabase:', studentsError)
+          setStudents([])
+        } else {
+          setStudents(studentsData || [])
+        }
+      } catch (err) {
+        console.warn('Unexpected error fetching students:', err)
+        setStudents([])
+      }
+
+      try {
+        // Fetch teachers
+        const { data: teachersData, error: teachersError } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, total_points, role')
+          .eq('role', 'teacher')
+          .order('total_points', { ascending: false })
+          .limit(50)
+
+        if (teachersError) {
+          console.warn('Error fetching teachers from Supabase:', teachersError)
+          setTeachers([])
+        } else {
+          setTeachers(teachersData || [])
+        }
+      } catch (err) {
+        console.warn('Unexpected error fetching teachers:', err)
+        setTeachers([])
       }
 
       setLoading(false)

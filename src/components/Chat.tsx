@@ -62,16 +62,48 @@ export default function Chat() {
   // Load all users except current user
   useEffect(() => {
     const loadUsers = async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .neq('id', user?.id)
-        .order('first_name', { ascending: true })
+      // Mock sistemde kullanıcıları localStorage'dan yükle
+      const mockUsers = localStorage.getItem('mockUsers')
+      if (mockUsers) {
+        try {
+          const parsedUsers = JSON.parse(mockUsers)
+          // Kendimiz hariç diğer kullanıcıları filtrele
+          const otherUsers = parsedUsers
+            .filter((u: { id: string }) => u.id !== user?.id)
+            .map((u: { id: string; firstName: string; lastName: string; role: string; classSection: string }) => ({
+              id: u.id,
+              first_name: u.firstName,
+              last_name: u.lastName,
+              role: u.role,
+              class_section: u.classSection
+            }))
+            .sort((a: { first_name: string }, b: { first_name: string }) => a.first_name.localeCompare(b.first_name))
 
-      if (error) {
-        console.error('Error loading users:', error)
-      } else {
-        setUsers(data || [])
+          setUsers(otherUsers)
+          setLoadingUsers(false)
+          return
+        } catch (e) {
+          console.warn('Error parsing mock users, falling back to Supabase:', e)
+        }
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .neq('id', user?.id)
+          .order('first_name', { ascending: true })
+
+        if (error) {
+          // Supabase hatası alırsak (örn: tablo yoksa) sessizce geç
+          console.warn('Error loading users from Supabase:', error)
+          setUsers([])
+        } else {
+          setUsers(data || [])
+        }
+      } catch (err) {
+        console.warn('Unexpected error loading users:', err)
+        setUsers([])
       }
       setLoadingUsers(false)
     }
@@ -90,38 +122,58 @@ export default function Chat() {
         return
       }
 
-      // First load messages without profiles (faster)
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .not('receiver_id', 'is', null) // Sadece receiver_id null olmayan mesajları al
-        .or(`and(user_id.eq.${user?.id},receiver_id.eq.${selectedUser.id}),and(user_id.eq.${selectedUser.id},receiver_id.eq.${user?.id})`)
-        .order('created_at', { ascending: false })
-        .limit(MESSAGES_PER_LOAD)
-
-      if (error) {
-        console.error('Error loading messages:', error)
-        setLoading(false)
-        return
+      // Mock sistemde mesajları localStorage'dan yükle
+      const storedMessages = localStorage.getItem(`messages_${user?.id}_${selectedUser.id}`)
+      if (storedMessages) {
+        try {
+          const parsedMessages = JSON.parse(storedMessages)
+          setMessages(parsedMessages)
+          setLoading(false)
+          setTimeout(scrollToBottom, 100)
+          return
+        } catch (e) {
+          console.warn('Error parsing mock messages:', e)
+        }
       }
 
-      if (data && data.length > 0) {
-        // Cache user profiles for better performance
-        const userIds = [...new Set(data.map(msg => msg.user_id))]
-        await cacheUserProfiles(userIds)
+      try {
+        // First load messages without profiles (faster)
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .not('receiver_id', 'is', null) // Sadece receiver_id null olmayan mesajları al
+          .or(`and(user_id.eq.${user?.id},receiver_id.eq.${selectedUser.id}),and(user_id.eq.${selectedUser.id},receiver_id.eq.${user?.id})`)
+          .order('created_at', { ascending: false })
+          .limit(MESSAGES_PER_LOAD)
 
-        // Add profile data from cache
-        const messagesWithProfiles = data.map(msg => ({
-          ...msg,
-          profiles: userProfiles.get(msg.user_id) || { first_name: '', last_name: '', role: '' }
-        }))
+        if (error) {
+          console.warn('Error loading messages from DB:', error)
+          setLoading(false)
+          // DB hatası varsa boş liste ile devam et
+          return
+        }
 
-        // Reverse to show chronological order (oldest first)
-        setMessages(messagesWithProfiles.reverse())
-        setHasMoreMessages(data.length === MESSAGES_PER_LOAD)
-      } else {
+        if (data && data.length > 0) {
+          // Cache user profiles for better performance
+          const userIds = [...new Set(data.map(msg => msg.user_id))]
+          await cacheUserProfiles(userIds)
+
+          // Add profile data from cache
+          const messagesWithProfiles = data.map(msg => ({
+            ...msg,
+            profiles: userProfiles.get(msg.user_id) || { first_name: '', last_name: '', role: '' }
+          }))
+
+          // Reverse to show chronological order (oldest first)
+          setMessages(messagesWithProfiles.reverse())
+          setHasMoreMessages(data.length === MESSAGES_PER_LOAD)
+        } else {
+          setMessages([])
+          setHasMoreMessages(false)
+        }
+      } catch (err) {
+        console.warn('Unexpected error loading messages:', err)
         setMessages([])
-        setHasMoreMessages(false)
       }
 
       setLoading(false)
@@ -260,19 +312,39 @@ export default function Chat() {
     setTimeout(scrollToBottom, 100)
 
     // Send to database
-    const { error } = await supabase
-      .from('messages')
-      .insert({
-        user_id: user.id,
-        receiver_id: selectedUser.id,
-        content: messageContent
-      })
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .insert({
+          user_id: user.id,
+          receiver_id: selectedUser.id,
+          content: messageContent
+        })
 
-    if (error) {
-      console.error('Error sending message:', error)
-      // Remove optimistic message on error
-      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id))
-      setNewMessage(messageContent) // Restore the message text
+      if (error) {
+        console.warn('Error sending message to DB:', error)
+        // DB hatası olsa bile optimistic update ile devam ediyoruz,
+        // ama mock sistem için localStorage'a da kaydedelim
+        const storedMessages = JSON.parse(localStorage.getItem(`messages_${user.id}_${selectedUser.id}`) || '[]')
+        storedMessages.push(optimisticMessage)
+        localStorage.setItem(`messages_${user.id}_${selectedUser.id}`, JSON.stringify(storedMessages))
+        
+        // Karşı taraf için de kaydedelim (mock sistemde chatleşebilmek için)
+        const reverseStoredMessages = JSON.parse(localStorage.getItem(`messages_${selectedUser.id}_${user.id}`) || '[]')
+        reverseStoredMessages.push(optimisticMessage)
+        localStorage.setItem(`messages_${selectedUser.id}_${user.id}`, JSON.stringify(reverseStoredMessages))
+      }
+    } catch (err) {
+      console.warn('Unexpected error sending message:', err)
+      // Fallback to local storage
+      const storedMessages = JSON.parse(localStorage.getItem(`messages_${user.id}_${selectedUser.id}`) || '[]')
+      storedMessages.push(optimisticMessage)
+      localStorage.setItem(`messages_${user.id}_${selectedUser.id}`, JSON.stringify(storedMessages))
+      
+       // Karşı taraf için de kaydedelim
+      const reverseStoredMessages = JSON.parse(localStorage.getItem(`messages_${selectedUser.id}_${user.id}`) || '[]')
+      reverseStoredMessages.push(optimisticMessage)
+      localStorage.setItem(`messages_${selectedUser.id}_${user.id}`, JSON.stringify(reverseStoredMessages))
     }
   }
 
