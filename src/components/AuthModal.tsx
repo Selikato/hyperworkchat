@@ -229,6 +229,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                 lastName: verifyProfile.last_name,
                 role: verifyProfile.role
               })
+
+              // AuthContext'e profile güncellemesini bildir
+              // Bu, AuthModal kapatıldıktan sonra profile'ın doğru yüklenmesini sağlar
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('profileUpdated'))
+              }, 100)
             }
           }
         }

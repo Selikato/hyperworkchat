@@ -25,6 +25,7 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<{ error?: string; success?: boolean; user?: any }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -113,9 +114,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription = result.data.subscription
     }
 
+    // Listen for profile updates
+    const handleProfileUpdate = () => {
+      if (user) {
+        fetchProfile(user.id)
+      }
+    }
+
+    window.addEventListener('profileUpdated', handleProfileUpdate)
+
     return () => {
       subscription?.unsubscribe()
       clearInterval(refreshInterval)
+      window.removeEventListener('profileUpdated', handleProfileUpdate)
     }
   }, [])
 
@@ -249,6 +260,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('💥 Sign in exception:', error)
       return { error: 'Giriş yapılırken bir hata oluştu' }
     }
+  }
+
+  const refreshProfile = async () => {
+    if (!user) return
+    await fetchProfile(user.id)
   }
 
   const signUp = async (email: string, password: string) => {
