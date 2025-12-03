@@ -28,7 +28,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     confirmPassword: '',
     firstName: '',
     lastName: '',
-    role: 'student' as UserRole,
+    role: '' as UserRole,
     classSection: '',
     workDays: [] as string[],
     dailyWorkMinutes: 0
@@ -54,7 +54,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       confirmPassword: '',
       firstName: '',
       lastName: '',
-      role: 'student',
+      role: '',
       classSection: '',
       workDays: [],
       dailyWorkMinutes: 0
@@ -92,6 +92,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
     if (registerData.password.length < 6) {
       setError('Şifre en az 6 karakter olmalıdır')
+      setLoading(false)
+      return
+    }
+
+    if (!registerData.role) {
+      setError('Lütfen rolünüzü seçin')
       setLoading(false)
       return
     }
