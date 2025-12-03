@@ -48,8 +48,8 @@ export default function ExamTimer() {
 
   const initializeUser = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      setUser(user)
+    if (user && user.email) {
+      setUser({ id: user.id, email: user.email })
 
       // Kullanıcı rolünü al
       const { data: profile } = await supabase
@@ -79,7 +79,11 @@ export default function ExamTimer() {
       .order('first_name')
 
     if (data && !error) {
-      setStudents(data)
+      const formattedStudents = data.map(student => ({
+        id: student.id,
+        name: `${student.first_name} ${student.last_name}`.trim()
+      }))
+      setStudents(formattedStudents)
     }
   }
 
@@ -170,7 +174,7 @@ export default function ExamTimer() {
 
     const result: ExamResult = {
       student_id: user.id,
-      student_name: `${user.user_metadata?.first_name || 'Öğrenci'} ${user.user_metadata?.last_name || ''}`,
+      student_name: `Öğrenci (${user.email})`,
       completion_time: completionTime,
       finished_at: finishedAt
     }
@@ -302,7 +306,7 @@ export default function ExamTimer() {
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
               {students.map((student, index) => (
                 <div key={index} className="bg-blue-50 p-2 rounded text-center text-sm">
-                  {student.first_name} {student.last_name}
+                  {student.name}
                 </div>
               ))}
             </div>

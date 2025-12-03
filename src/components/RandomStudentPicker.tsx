@@ -44,7 +44,9 @@ export default function RandomStudentPicker() {
     // Kullanıcı bilgisini al
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
+      if (user && user.email) {
+        setUser({ id: user.id, email: user.email })
+      }
     }
 
     // Öğrenci listesini veritabanından çek
@@ -230,7 +232,7 @@ export default function RandomStudentPicker() {
         searchCode: searchError?.code
       })
 
-      let studentId = existingProfile?.id
+      const studentId = existingProfile?.id
 
       // Profil yoksa sessizce çık (sadece kayıtlı öğrencileri kullan)
       if (!studentId) {

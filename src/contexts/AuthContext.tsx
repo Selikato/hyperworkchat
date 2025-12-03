@@ -224,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
 
         // Özel hata mesajları
-        if (result.error.message.includes('Invalid login credentials')) {
+        if (result.error.message.includes('Invalid login credentials') && supabase) {
           console.log('⚠️ Invalid credentials - checking if user exists...')
           // Kullanıcının var olup olmadığını kontrol et
           const { data: userExists } = await supabase
@@ -234,34 +234,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single()
           console.log('👤 User exists in auth.users:', !!userExists)
         }
-        }
 
         return { error: result.error.message }
       }
 
       console.log('✅ Sign in successful for user:', result.data.user?.email)
 
-<<<<<<< HEAD
       // Giriş başarılı oldu, profil kontrolü yap
       if (result.data.user && supabase) {
         console.log('🔍 Ensuring profile exists for:', result.data.user.id)
         await ensureProfileExists(result.data.user.id)
-=======
-      setUser(mockUser as unknown as User)
-
-      // Mock profile oluştur
-      const mockProfile = {
-        id: user.id,
-        first_name: user.firstName,
-        last_name: user.lastName,
-        role: user.role,
-        class_section: user.classSection,
-        work_days: user.workDays || [],
-        daily_work_minutes: user.dailyWorkMinutes || 0,
-        total_points: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
->>>>>>> e2ef877bfd37ef408cf925659f21d8a0468c2cad
       }
 
       return { error: undefined }
@@ -278,7 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🔐 Attempting sign up for:', email, password)
 
       // Basit Supabase signUp çağrısı
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await supabase!.auth.signUp({
         email: email.trim(),
         password: password
       })
@@ -288,7 +270,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         console.error('❌ Supabase Auth Error:', error)
         return { error: `Kayıt hatası: ${error.message}` }
-      }
       }
 
       console.log('✅ Auth successful for user:', data.user?.email)
