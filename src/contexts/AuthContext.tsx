@@ -217,11 +217,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🔍 Sign in raw result:', JSON.stringify(result, null, 2))
 
       if (result.error) {
-        console.error('❌ Sign in error details:', {
-          message: result.error?.message,
-          status: result.error?.status,
-          code: result.error?.code
-        })
+        console.error('❌ Sign in error details:', result.error)
+        console.error('❌ Sign in error type:', typeof result.error)
+        console.error('❌ Sign in error keys:', result.error ? Object.keys(result.error) : 'NO ERROR OBJ')
 
         // Özel hata mesajları
         if (result.error?.message?.includes('Invalid login credentials') && supabase) {
