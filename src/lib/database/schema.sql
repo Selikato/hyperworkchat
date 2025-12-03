@@ -62,6 +62,35 @@ CREATE TABLE selected_students (
   UNIQUE(teacher_id, student_id)
 );
 
+-- Groups table for class group chats
+CREATE TABLE groups (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  class_section TEXT NOT NULL,
+  created_by UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Group members table
+CREATE TABLE group_members (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id UUID REFERENCES groups(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  joined_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  UNIQUE(group_id, user_id)
+);
+
+-- Group messages table
+CREATE TABLE group_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id UUID REFERENCES groups(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
 -- Row Level Security Policies
 
 -- Profiles policies
@@ -110,6 +139,69 @@ CREATE POLICY "Teachers can insert selected students" ON selected_students
   FOR INSERT WITH CHECK (
     auth.uid() = teacher_id AND
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher')
+  );
+
+-- Groups policies
+ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view groups for their class" ON groups
+  FOR SELECT USING (
+    class_section IN (
+      SELECT class_section FROM profiles WHERE id = auth.uid()
+    ) OR
+    created_by = auth.uid() OR
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher')
+  );
+
+CREATE POLICY "Teachers can create groups" ON groups
+  FOR INSERT WITH CHECK (
+    auth.uid() = created_by AND
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher')
+  );
+
+CREATE POLICY "Group creators can update their groups" ON groups
+  FOR UPDATE USING (auth.uid() = created_by);
+
+-- Group members policies
+ALTER TABLE group_members ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view group memberships" ON group_members
+  FOR SELECT USING (
+    user_id = auth.uid() OR
+    group_id IN (
+      SELECT id FROM groups WHERE created_by = auth.uid() OR
+      class_section IN (SELECT class_section FROM profiles WHERE id = auth.uid())
+    )
+  );
+
+CREATE POLICY "Teachers can manage group members" ON group_members
+  FOR ALL USING (
+    group_id IN (SELECT id FROM groups WHERE created_by = auth.uid()) OR
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'teacher')
+  );
+
+-- Group messages policies
+ALTER TABLE group_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Group members can view messages" ON group_messages
+  FOR SELECT USING (
+    group_id IN (
+      SELECT group_id FROM group_members WHERE user_id = auth.uid()
+    ) OR
+    group_id IN (
+      SELECT id FROM groups WHERE created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Group members can send messages" ON group_messages
+  FOR INSERT WITH CHECK (
+    auth.uid() = user_id AND
+    group_id IN (
+      SELECT group_id FROM group_members WHERE user_id = auth.uid()
+    ) OR
+    group_id IN (
+      SELECT id FROM groups WHERE created_by = auth.uid()
+    )
   );
 
 -- Functions and Triggers

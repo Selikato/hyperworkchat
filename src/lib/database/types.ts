@@ -62,3 +62,31 @@ export interface WorkStats {
   average_session_length: number
   completion_rate: number
 }
+
+export interface Group {
+  id: string
+  name: string
+  description?: string
+  class_section: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  creator_profile?: Profile
+}
+
+export interface GroupMember {
+  id: string
+  group_id: string
+  user_id: string
+  joined_at: string
+  user_profile?: Profile
+}
+
+export interface GroupMessage {
+  id: string
+  group_id: string
+  user_id: string
+  content: string
+  created_at: string
+  user_profile?: Profile
+}

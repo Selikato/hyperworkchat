@@ -11,8 +11,9 @@ import WorkHistory from './WorkHistory'
 import TeacherPanel from './TeacherPanel'
 import RandomStudentPicker from './RandomStudentPicker'
 import ExamTimer from './ExamTimer'
+import GroupChat from './GroupChat'
 
-type Tab = 'timer' | 'chat' | 'leaderboard' | 'profile' | 'history' | 'teacher' | 'random' | 'exam'
+type Tab = 'timer' | 'chat' | 'leaderboard' | 'profile' | 'history' | 'teacher' | 'random' | 'exam' | 'groups'
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -36,6 +37,8 @@ export default function Dashboard() {
         return <RandomStudentPicker />
       case 'exam':
         return <ExamTimer />
+      case 'groups':
+        return <GroupChat />
       default:
         return <PomodoroTimer />
     }
