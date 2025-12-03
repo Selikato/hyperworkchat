@@ -1,30 +1,37 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Button from './Button'
 
-// Öğrenci listesi - önceki konuşmadan
-const STUDENTS = [
-  'Ahmet Yavuz',
-  'Ahmet Hamza',
-  'Berat',
-  'Çetin Ali',
-  'Ekrem',
-  'Emir',
-  'Eymen',
-  'Kayra Emir',
-  'Talha',
-  'Muhammed Kerem(KETO)',
-  'Ömer',
-  'Ömer Asaf',
-  'Selim Kaan',
-  'Yavuz Selim',
-  'Yusuf',
-  'Onur Enes',
-  'İshak',
-  'Hamza'
-]
+// Sınıf bazlı öğrenci listeleri
+const CLASS_STUDENTS: { [key: string]: string[] } = {
+  '6/A': [
+    'Ahmet Yavuz',
+    'Ahmet Hamza',
+    'Berat',
+    'Çetin Ali',
+    'Ekrem',
+    'Emir',
+    'Eymen',
+    'Kayra Emir'
+  ],
+  '6/B': [
+    'Talha',
+    'Muhammed Kerem(KETO)',
+    'Ömer',
+    'Ömer Asaf',
+    'Selim Kaan',
+    'Yavuz Selim',
+    'Yusuf'
+  ],
+  '6/C': [
+    'Onur Enes',
+    'İshak',
+    'Hamza'
+  ]
+}
 
 interface SelectedStudent {
   name: string
@@ -32,113 +39,67 @@ interface SelectedStudent {
 }
 
 export default function RandomStudentPicker() {
+  const { profile, user } = useAuth()
   const [selectedStudents, setSelectedStudents] = useState<SelectedStudent[]>([])
   const [currentSelection, setCurrentSelection] = useState<string | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
   const [availableStudents, setAvailableStudents] = useState<string[]>([])
   const [loadingStudents, setLoadingStudents] = useState(true)
-  const [user, setUser] = useState<{ id: string; email: string; class_section?: string } | null>(null)
-  const [allStudentsFromDB, setAllStudentsFromDB] = useState<string[]>([])
 
   useEffect(() => {
-    // Kullanıcı bilgisini al
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user && user.email) {
-        // Kullanıcının profilini çek (sınıf bilgisi için)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('class_section')
-          .eq('id', user.id)
-          .single()
-
-        setUser({
-          id: user.id,
-          email: user.email,
-          class_section: profile?.class_section
-        })
-      }
-    }
-
-    getUser()
-  }, [])
-
-  // Kullanıcı bilgisi geldiğinde öğrencileri yükle
-  useEffect(() => {
-    if (!user) return
-
+    // Öğrenci listesini profile'a göre yükle
     const loadStudents = async () => {
       try {
-        // Kullanıcının sınıfına göre öğrenci listesini çek
-        let query = supabase
-          .from('profiles')
-          .select('first_name, last_name, class_section')
-          .eq('role', 'student')
-          .order('first_name', { ascending: true })
+        // Öğrencinin sınıfına göre öğrenci listesi seç
+        let studentsForClass: string[] = []
 
-        // Kullanıcı bir sınıfa kayıtlıysa, sadece o sınıfın öğrencilerini göster
-        if (user.class_section) {
-          query = query.eq('class_section', user.class_section)
-        }
+        if (profile?.role === 'student' && profile.class_section) {
+          // Öğrenci kendi sınıfındaki öğrencileri görsün
+          studentsForClass = CLASS_STUDENTS[profile.class_section] || []
+          console.log(`📚 ${profile.class_section} sınıfındaki öğrenciler yüklendi:`, studentsForClass.length, 'öğrenci')
+        } else if (profile?.role === 'teacher') {
+          // Öğretmen tüm öğrencileri görebilir (şimdilik eski sistem)
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('first_name, last_name')
+            .eq('role', 'student')
+            .order('first_name', { ascending: true })
 
-        const { data, error } = await query
-
-        if (!error && data) {
-          const studentNames = data.map(student => {
-            const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
-            return fullName
-          }).filter(name => name.length > 0) // Boş isimleri filtrele
-
-          console.log('📋 Raw student data from DB:', data.slice(0, 3)) // İlk 3 öğrenciyi göster
-          console.log('📋 Processed student names:', studentNames.slice(0, 5)) // İlk 5 ismi göster
-
-          setAllStudentsFromDB(studentNames)
-          setAvailableStudents(studentNames)
-          console.log('✅ Öğrenci listesi yüklendi:', studentNames.length, 'öğrenci')
+          if (!error && data) {
+            studentsForClass = data.map(student => {
+              const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
+              return fullName
+            }).filter(name => name.length > 0)
+          } else {
+            // Fallback olarak tüm hardcoded öğrencileri kullan
+            studentsForClass = Object.values(CLASS_STUDENTS).flat()
+          }
         } else {
-          console.warn('Veritabanından öğrenci listesi alınamadı, varsayılan listeyi kullan:', error)
-          // Kullanıcı bir sınıfa kayıtlıysa, sınıf bilgisi olmadan varsayılan listeyi kullan
-          setAllStudentsFromDB(STUDENTS)
-          setAvailableStudents(STUDENTS)
+          // Giriş yapmamış kullanıcı için varsayılan liste
+          studentsForClass = Object.values(CLASS_STUDENTS).flat()
         }
+
+        console.log('📋 Yüklenen öğrenci listesi:', studentsForClass.slice(0, 5), '...')
+
+        setAvailableStudents(studentsForClass)
+        console.log('✅ Öğrenci listesi yüklendi:', studentsForClass.length, 'öğrenci')
       } catch (error) {
         console.error('Öğrenci listesi yükleme hatası:', error)
-        setAllStudentsFromDB(STUDENTS)
-        setAvailableStudents(STUDENTS)
+        // Hata durumunda tüm öğrencileri göster
+        const fallbackStudents = Object.values(CLASS_STUDENTS).flat()
+        setAvailableStudents(fallbackStudents)
       } finally {
         setLoadingStudents(false)
       }
     }
 
     loadStudents()
-  }, [user])
 
-  // Kullanıcı bilgisi geldiğinde öğrencileri yükle
-  useEffect(() => {
-    if (!user) return
-
-    const loadStudents = async () => {
-      try {
-        // Kullanıcının sınıfına göre öğrenci listesini çek
-        let query = supabase
-          .from('profiles')
-          .select('first_name, last_name, class_section')
-          .eq('role', 'student')
-          .order('first_name', { ascending: true })
-
-        // Kullanıcı bir sınıfa kayıtlıysa, sadece o sınıfın öğrencilerini göster
-        if (user.class_section) {
-          query = query.eq('class_section', user.class_section)
-        }
-
-        const { data, error } = await query
-
-        if (!error && data) {
-    loadStudents()
-
-    // Önceki seçimleri yükle
-    loadPreviousSelections()
-  }, [])
+    // Önceki seçimleri yükle (sadece öğretmenler için)
+    if (profile?.role === 'teacher') {
+      loadPreviousSelections()
+    }
+  }, [profile])
 
   const loadPreviousSelections = async () => {
     if (!user) return

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import Button from './Button'
-import { Message, Group, GroupMessage } from '@/lib/database/types'
+import { Message } from '@/lib/database/types'
 
 interface UserWithProfile {
   id: string
@@ -15,20 +15,15 @@ interface UserWithProfile {
 }
 
 export default function Chat() {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [selectedUser, setSelectedUser] = useState<UserWithProfile | null>(null)
-  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null)
   const [users, setUsers] = useState<UserWithProfile[]>([])
-  const [groups, setGroups] = useState<Group[]>([])
   const [messages, setMessages] = useState<(Message & { profiles?: { first_name: string; last_name: string; role: string } })[]>([])
-  const [groupMessages, setGroupMessages] = useState<(GroupMessage & { user_profile?: { first_name: string; last_name: string; role: string } })[]>([])
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadingUsers, setLoadingUsers] = useState(true)
-  const [loadingGroups, setLoadingGroups] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMoreMessages, setHasMoreMessages] = useState(true)
-  const [chatMode, setChatMode] = useState<'dm' | 'group'>('dm')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const MESSAGES_PER_LOAD = 20 // Her seferinde 20 mesaj yükle
@@ -63,79 +58,6 @@ export default function Chat() {
       })
     }
   }, [userProfiles])
-
-  // Grup mesajlarını yükle
-  const fetchGroupMessages = useCallback(async (groupId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('group_messages')
-        .select(`
-          *,
-          user_profile:profiles!group_messages_user_id_fkey (
-            first_name,
-            last_name,
-            role
-          )
-        `)
-        .eq('group_id', groupId)
-        .order('created_at', { ascending: false })
-        .limit(MESSAGES_PER_LOAD)
-
-      if (error) {
-        console.error('Error fetching group messages:', error)
-        return []
-      }
-
-      return data || []
-    } catch (error) {
-      console.error('Error in fetchGroupMessages:', error)
-      return []
-    }
-  }, [])
-
-  // Grupları yükle
-  useEffect(() => {
-    if (!user || !profile) return
-
-    const fetchGroups = async () => {
-      setLoadingGroups(true)
-      try {
-        const { data, error } = await supabase
-          .from('group_members')
-          .select(`
-            group_id,
-            groups!group_members_group_id_fkey (
-              id,
-              name,
-              description,
-              class_section,
-              created_by,
-              created_at,
-              updated_at,
-              creator_profile:profiles!groups_created_by_fkey (
-                first_name,
-                last_name,
-                role
-              )
-            )
-          `)
-          .eq('user_id', user.id)
-
-        if (error) {
-          console.error('Error fetching groups:', error)
-        } else {
-          const groupData = data?.map(item => item.groups).filter(Boolean) || []
-          setGroups(groupData)
-        }
-      } catch (error) {
-        console.error('Error in fetchGroups:', error)
-      } finally {
-        setLoadingGroups(false)
-      }
-    }
-
-    fetchGroups()
-  }, [user, profile])
 
   // Load all users except current user
   useEffect(() => {
@@ -443,41 +365,12 @@ export default function Chat() {
     <div className="max-w-6xl mx-auto">
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
         <div className="flex h-[600px]">
-          {/* Kullanıcı ve Grup Listesi - Sol Taraf */}
+          {/* Kullanıcı Listesi - Sol Taraf */}
           <div className="w-80 border-r border-gray-200 bg-gray-50">
-            {/* Tab Buttons */}
-            <div className="flex border-b border-gray-200">
-              <button
-                onClick={() => setChatMode('dm')}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  chatMode === 'dm'
-                    ? 'bg-white text-blue-600 border-b-2 border-blue-500'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                👥 DM
-              </button>
-              <button
-                onClick={() => setChatMode('group')}
-                className={`flex-1 py-3 px-4 text-sm font-medium transition-colors ${
-                  chatMode === 'group'
-                    ? 'bg-white text-blue-600 border-b-2 border-blue-500'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                👨‍👩‍👧‍👦 Gruplar
-              </button>
-            </div>
-
             <div className="p-4 border-b border-gray-200 bg-white">
-              <h2 className="text-lg font-semibold text-gray-900">
-                {chatMode === 'dm' ? '👥 Kullanıcılar' : '👨‍👩‍👧‍👦 Gruplar'}
-              </h2>
+              <h2 className="text-lg font-semibold text-gray-900">👥 Kullanıcılar</h2>
               <p className="text-sm text-gray-600">
-                {chatMode === 'dm'
-                  ? 'Mesajlaşmak istediğiniz kişiyi seçin'
-                  : 'Katıldığınız grupları görüntüleyin'
-                }
+                Mesajlaşmak istediğiniz kişiyi seçin
               </p>
             </div>
             <div className="overflow-y-auto h-full">
@@ -491,10 +384,7 @@ export default function Chat() {
                 users.map((userProfile) => (
                   <div
                     key={userProfile.id}
-                    onClick={() => {
-                      setSelectedUser(userProfile)
-                      setSelectedGroup(null)
-                    }}
+                    onClick={() => setSelectedUser(userProfile)}
                     className={`p-4 cursor-pointer transition-all duration-200 hover:shadow-md ${
                       selectedUser?.id === userProfile.id
                         ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-r-4 border-r-blue-500 shadow-sm'

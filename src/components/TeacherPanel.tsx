@@ -25,9 +25,6 @@ export default function TeacherPanel() {
   const [loading, setLoading] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [studentWorkStats, setStudentWorkStats] = useState<{[key: string]: {totalMinutes: number, totalSessions: number, completedSessions: number}}>({})
-  const [showCreateGroup, setShowCreateGroup] = useState(false)
-  const [groupName, setGroupName] = useState('')
-  const [groupDescription, setGroupDescription] = useState('')
 
   // Fetch available classes and previously selected students
   useEffect(() => {
@@ -208,60 +205,6 @@ export default function TeacherPanel() {
     return selectedStudents.filter(s => s.class_section === classSection)
   }
 
-  const createGroup = async () => {
-    if (!user || !selectedClass || !groupName.trim()) return
-
-    try {
-      // Grup oluştur
-      const { data: groupData, error: groupError } = await supabase
-        .from('groups')
-        .insert({
-          name: groupName.trim(),
-          description: groupDescription.trim() || null,
-          class_section: selectedClass,
-          created_by: user.id
-        })
-        .select()
-        .single()
-
-      if (groupError) {
-        console.error('Error creating group:', groupError)
-        alert('Grup oluşturulurken hata oluştu!')
-        return
-      }
-
-      // Sınıftaki tüm öğrencileri gruba ekle
-      const studentInserts = students.map(student => ({
-        group_id: groupData.id,
-        user_id: student.id
-      }))
-
-      // Öğretmeni de gruba ekle
-      studentInserts.push({
-        group_id: groupData.id,
-        user_id: user.id
-      })
-
-      const { error: membersError } = await supabase
-        .from('group_members')
-        .insert(studentInserts)
-
-      if (membersError) {
-        console.error('Error adding members:', membersError)
-        alert('Grup üyeleri eklenirken hata oluştu!')
-        return
-      }
-
-      alert('Grup başarıyla oluşturuldu!')
-      setGroupName('')
-      setGroupDescription('')
-      setShowCreateGroup(false)
-    } catch (error) {
-      console.error('Unexpected error creating group:', error)
-      alert('Grup oluşturulurken beklenmeyen hata oluştu!')
-    }
-  }
-
   if (!profile || profile.role !== 'teacher') {
     return (
       <Card>
@@ -334,81 +277,13 @@ export default function TeacherPanel() {
               </p>
             </div>
 
-            <div className="flex gap-4 justify-center mb-4">
-              <Button
-                size="lg"
-                onClick={selectRandomStudent}
-                disabled={loading || students.length === 0}
-              >
-                {loading ? 'Seçiliyor...' : 'Rastgele Öğrenci Seç'}
-              </Button>
-
-              <Button
-                variant="secondary"
-                onClick={() => setShowCreateGroup(true)}
-                disabled={students.length === 0}
-              >
-                Grup Oluştur
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Create Group Modal */}
-        {showCreateGroup && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <Card className="max-w-md w-full mx-4">
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Grup Oluştur</h3>
-                <p className="text-sm text-gray-600">{selectedClass} sınıfı için</p>
-              </div>
-
-              <div className="space-y-4">
-                <Input
-                  label="Grup Adı"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                  placeholder="örn: Matematik Çalışma Grubu"
-                  required
-                />
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Açıklama (İsteğe bağlı)
-                  </label>
-                  <textarea
-                    value={groupDescription}
-                    onChange={(e) => setGroupDescription(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={3}
-                    placeholder="Grup hakkında kısa açıklama..."
-                  />
-                </div>
-
-                <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
-                  <p><strong>Not:</strong> Bu grup {selectedClass} sınıfındaki tüm öğrenciler ve siz dahil edileceksiniz.</p>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setShowCreateGroup(false)
-                    setGroupName('')
-                    setGroupDescription('')
-                  }}
-                >
-                  İptal
-                </Button>
-                <Button
-                  onClick={createGroup}
-                  disabled={!groupName.trim()}
-                >
-                  Grup Oluştur
-                </Button>
-              </div>
-            </Card>
+            <Button
+              size="lg"
+              onClick={selectRandomStudent}
+              disabled={loading || students.length === 0}
+            >
+              {loading ? 'Seçiliyor...' : 'Rastgele Öğrenci Seç'}
+            </Button>
           </div>
         )}
       </Card>
