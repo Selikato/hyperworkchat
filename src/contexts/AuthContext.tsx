@@ -218,13 +218,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (result.error) {
         console.error('❌ Sign in error details:', {
-          message: result.error.message,
-          status: result.error.status,
-          code: result.error.code
+          message: result.error?.message,
+          status: result.error?.status,
+          code: result.error?.code
         })
 
         // Özel hata mesajları
-        if (result.error.message.includes('Invalid login credentials') && supabase) {
+        if (result.error?.message?.includes('Invalid login credentials') && supabase) {
           console.log('⚠️ Invalid credentials - checking if user exists...')
           // Kullanıcının var olup olmadığını kontrol et
           const { data: userExists } = await supabase
@@ -235,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('👤 User exists in auth.users:', !!userExists)
         }
 
-        return { error: result.error.message }
+        return { error: result.error?.message }
       }
 
       console.log('✅ Sign in successful for user:', result.data.user?.email)
@@ -269,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) {
         console.error('❌ Supabase Auth Error:', error)
-        return { error: `Kayıt hatası: ${error.message}` }
+        return { error: `Kayıt hatası: ${error?.message}` }
       }
 
       console.log('✅ Auth successful for user:', data.user?.email)
