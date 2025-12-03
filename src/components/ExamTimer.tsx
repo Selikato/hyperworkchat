@@ -22,14 +22,14 @@ interface ExamSession {
 }
 
 export default function ExamTimer() {
-  const [user, setUser] = useState<{ id: string; email: string | undefined } | null>(null)
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
   const [userRole, setUserRole] = useState<'student' | 'teacher' | null>(null)
   const [currentSession, setCurrentSession] = useState<ExamSession | null>(null)
   const [timeRemaining, setTimeRemaining] = useState<number>(0)
   const [isRunning, setIsRunning] = useState(false)
   const [examDuration, setExamDuration] = useState<number>(60) // dakika
   const [results, setResults] = useState<ExamResult[]>([])
-  const [students, setStudents] = useState<{ id: string; first_name: string; last_name: string }[]>([])
+  const [students, setStudents] = useState<{ id: string; name: string }[]>([])
 
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -47,24 +47,40 @@ export default function ExamTimer() {
   }, [])
 
   const initializeUser = async () => {
-    // Mock user initialization
-    const mockUser = { id: 'mock-teacher', email: 'teacher@mock.com' }
-    setUser(mockUser)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      setUser(user)
 
-    // Mock role
-    setUserRole('teacher')
-    loadStudents()
-    setupRealtimeSubscription()
+      // Kullanıcı rolünü al
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (profile) {
+        setUserRole(profile.role)
+
+        if (profile.role === 'teacher') {
+          loadStudents()
+          setupRealtimeSubscription()
+        } else {
+          checkActiveExam()
+        }
+      }
+    }
   }
 
   const loadStudents = async () => {
-    // Mock students
-    const mockStudents = [
-      { id: '1', first_name: 'Ahmet', last_name: 'Yavuz' },
-      { id: '2', first_name: 'Berat', last_name: '' },
-      { id: '3', first_name: 'Ekrem', last_name: '' }
-    ]
-    setStudents(mockStudents)
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name')
+      .eq('role', 'student')
+      .order('first_name')
+
+    if (data && !error) {
+      setStudents(data)
+    }
   }
 
   const setupRealtimeSubscription = () => {
@@ -154,7 +170,7 @@ export default function ExamTimer() {
 
     const result: ExamResult = {
       student_id: user.id,
-      student_name: 'Mock Öğrenci',
+      student_name: `${user.user_metadata?.first_name || 'Öğrenci'} ${user.user_metadata?.last_name || ''}`,
       completion_time: completionTime,
       finished_at: finishedAt
     }

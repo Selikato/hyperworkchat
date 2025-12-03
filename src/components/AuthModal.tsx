@@ -15,7 +15,7 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: AuthModalProps) {
-  const { signIn, signUp, updateUserInfo } = useAuth()
+  const { signIn, signUp } = useAuth()
   const [mode, setMode] = useState<'login' | 'register' | 'verify'>(initialMode)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -109,47 +109,136 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     if (!result.error) {
       console.log('✅ Auth successful, user ID:', result.user?.id, 'Role:', registerData.role)
 
-      // Auth başarılı oldu, şimdi mock user info güncelle
+      // Auth başarılı oldu, şimdi manuel profil oluştur
       try {
-        const userInfo = {
-          firstName: registerData.firstName || '',
-          lastName: registerData.lastName || '',
+        const profileData = {
+          id: result.user?.id,
+          first_name: registerData.firstName || '',
+          last_name: registerData.lastName || '',
           role: registerData.role || 'student',
-          classSection: registerData.classSection || '',
-          workDays: registerData.workDays || [],
-          dailyWorkMinutes: registerData.dailyWorkMinutes || 0
+          class_section: registerData.classSection || null,
+          work_days: registerData.workDays || [],
+          daily_work_minutes: registerData.dailyWorkMinutes || 0
         }
 
-        console.log('📝 Updating user info:', userInfo)
+        console.log('📝 Creating profile with data:', profileData)
 
-        const updateResult = await updateUserInfo(result.user?.id || '', userInfo)
+        // Önce profilin var olup olmadığını kontrol et
+        const { data: existingProfile, error: checkError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', profileData.id)
+          .single()
 
-        if (updateResult.error) {
-          console.error('❌ Error updating user info:', updateResult.error)
-          setError(updateResult.error)
-          setLoading(false)
-          return
+        console.log('🔍 Profile check result:', { existingProfile, checkError })
+
+        if (existingProfile && !checkError) {
+          console.log('✅ Profile already exists, updating with new data...')
+          // Profil zaten var, güncelle
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              first_name: profileData.first_name,
+              last_name: profileData.last_name,
+              role: profileData.role,
+              class_section: profileData.class_section,
+              work_days: profileData.work_days,
+              daily_work_minutes: profileData.daily_work_minutes
+            })
+            .eq('id', profileData.id)
+
+          if (updateError) {
+            console.error('❌ Profile update error:', updateError)
+            setError(`Profil güncelleme hatası: ${updateError.message}`)
+            setLoading(false)
+            return
+          } else {
+            console.log('✅ Profile updated successfully')
+
+            // İsimlerin gerçekten kaydedildiğini doğrula
+            const { data: verifyProfile } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, role')
+              .eq('id', profileData.id)
+              .single()
+
+            console.log('🔍 Profile verification after update:', verifyProfile)
+
+            if (verifyProfile) {
+              console.log('✅ Names saved successfully:', {
+                firstName: verifyProfile.first_name,
+                lastName: verifyProfile.last_name,
+                role: verifyProfile.role
+              })
+            }
+          }
+        } else {
+          console.log('📝 Profile does not exist, creating new one...')
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert(profileData)
+
+          if (profileError) {
+            console.error('❌ Profile creation error:', {
+              message: profileError.message,
+              code: profileError.code,
+              details: profileError.details,
+              hint: profileError.hint,
+              fullError: profileError
+            })
+
+            // RLS hatası mı kontrol et
+            if (profileError.code === '42501') {
+              console.warn('🔒 RLS policy violation - trying with service role approach...')
+              // Alternatif yöntem: RPC fonksiyonu kullan
+              const { error: rpcError } = await supabase.rpc('create_profile_manual', profileData)
+              if (rpcError) {
+                console.error('❌ RPC profile creation also failed:', rpcError)
+                setError(`Profil oluşturulamadı: ${rpcError.message}`)
+                setLoading(false)
+                return
+              } else {
+                console.log('✅ Profile created via RPC')
+              }
+            } else {
+              setError(`Profil hatası: ${profileError.message}`)
+              setLoading(false)
+              return
+            }
+          } else {
+            console.log('✅ Profile created successfully')
+
+            // İsimlerin gerçekten kaydedildiğini doğrula
+            const { data: verifyProfile } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, role')
+              .eq('id', profileData.id)
+              .single()
+
+            console.log('🔍 Profile verification after creation:', verifyProfile)
+
+            if (verifyProfile) {
+              console.log('✅ Names saved successfully:', {
+                firstName: verifyProfile.first_name,
+                lastName: verifyProfile.last_name,
+                role: verifyProfile.role
+              })
+            }
+          }
         }
-
-        console.log('✅ User info updated successfully')
-
-        // Mock sistemde otomatik giriş yap
-        const signInResult = await signIn(registerData.email, registerData.password)
-        if (signInResult.error) {
-          console.error('❌ Auto sign in failed:', signInResult.error)
-          setError('Kayıt başarılı ama giriş yapılamadı: ' + signInResult.error)
-          setLoading(false)
-          return
-        }
-
-        console.log('✅ Auto sign in successful after registration')
-        onClose()
       } catch (error) {
-        console.error('💥 User info update exception:', error)
-        setError('Kullanıcı bilgileri güncellenirken hata oluştu')
+        console.error('💥 Profile creation exception:', {
+          error,
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        })
+        setError('Profil oluşturma sırasında bir hata oluştu')
         setLoading(false)
         return
       }
+
+      setPendingEmail(registerData.email)
+      setMode('verify')
     }
     setLoading(false)
   }

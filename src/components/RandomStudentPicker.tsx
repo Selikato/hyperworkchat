@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 import Button from './Button'
 
-// Öğrenci listesi - sabit liste
+// Öğrenci listesi - önceki konuşmadan
 const STUDENTS = [
   'Ahmet Yavuz',
   'Ahmet Hamza',
@@ -35,42 +36,111 @@ export default function RandomStudentPicker() {
   const [currentSelection, setCurrentSelection] = useState<string | null>(null)
   const [isAnimating, setIsAnimating] = useState(false)
   const [availableStudents, setAvailableStudents] = useState<string[]>([])
+  const [loadingStudents, setLoadingStudents] = useState(true)
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
+  const [allStudentsFromDB, setAllStudentsFromDB] = useState<string[]>([])
 
   useEffect(() => {
-    console.log('🎯 RandomStudentPicker useEffect çalıştı')
-    console.log('📚 STUDENTS array:', STUDENTS)
-    console.log('📊 STUDENTS length:', STUDENTS.length)
+    // Kullanıcı bilgisini al
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    }
 
-    // Öğrenci listesini başlat
-    setAvailableStudents(STUDENTS)
-    console.log('✅ Available students set to:', STUDENTS)
+    // Öğrenci listesini veritabanından çek
+    const loadStudents = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('role', 'student')
+          .order('first_name', { ascending: true })
 
-    // localStorage'dan önceki seçimleri yükle
+        if (!error && data) {
+          const studentNames = data.map(student => {
+            const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim()
+            return fullName
+          }).filter(name => name.length > 0) // Boş isimleri filtrele
+
+          console.log('📋 Raw student data from DB:', data.slice(0, 3)) // İlk 3 öğrenciyi göster
+          console.log('📋 Processed student names:', studentNames.slice(0, 5)) // İlk 5 ismi göster
+
+          setAllStudentsFromDB(studentNames)
+          setAvailableStudents(studentNames)
+          console.log('✅ Öğrenci listesi yüklendi:', studentNames.length, 'öğrenci')
+        } else {
+          console.warn('Veritabanından öğrenci listesi alınamadı, varsayılan listeyi kullan:', error)
+          setAllStudentsFromDB(STUDENTS)
+          setAvailableStudents(STUDENTS)
+        }
+      } catch (error) {
+        console.error('Öğrenci listesi yükleme hatası:', error)
+        setAllStudentsFromDB(STUDENTS)
+        setAvailableStudents(STUDENTS)
+      } finally {
+        setLoadingStudents(false)
+      }
+    }
+
+    getUser()
+    loadStudents()
+
+    // Önceki seçimleri yükle
     loadPreviousSelections()
   }, [])
 
-  const loadPreviousSelections = () => {
-    try {
-      const saved = localStorage.getItem('selectedStudents_v2')
-      if (saved) {
-        const parsed = JSON.parse(saved).map((item: { name: string; timestamp: string }) => ({
-          ...item,
-          timestamp: new Date(item.timestamp)
-        }))
-        setSelectedStudents(parsed)
+  const loadPreviousSelections = async () => {
+    if (!user) return
 
-        // Kullanılabilir öğrencileri güncelle
-        const usedNames = parsed.map((s: SelectedStudent) => s.name)
-        setAvailableStudents(STUDENTS.filter(student => !usedNames.includes(student)))
+    try {
+      const { data, error } = await supabase
+        .from('selected_students')
+        .select('*')
+        .eq('teacher_id', user.id)
+        .order('selected_at', { ascending: false })
+
+      if (error) {
+        console.error('Seçimleri yükleme hatası:', error)
+        return
       }
+
+      // Öğrenci isimlerini profiles tablosundan al
+      const selectedNames = data?.map(async (selection) => {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', selection.student_id)
+          .single()
+
+        if (profile) {
+          return {
+            name: `${profile.first_name} ${profile.last_name}`,
+            timestamp: new Date(selection.selected_at)
+          }
+        }
+        return null
+      }).filter(Boolean) || []
+
+      const resolvedNames = await Promise.all(selectedNames)
+      setSelectedStudents(resolvedNames.filter(Boolean) as SelectedStudent[])
+
+      // Kullanılabilir öğrencileri güncelle - veritabanından gelen öğrencilerle
+      const usedNames = resolvedNames.map(s => s?.name).filter(Boolean)
+      setAvailableStudents(allStudentsFromDB.filter(student => !usedNames.includes(student)))
+
     } catch (error) {
       console.error('Seçimleri yükleme hatası:', error)
     }
   }
 
-  const selectRandomStudent = () => {
+  const selectRandomStudent = async () => {
     if (availableStudents.length === 0) {
       alert('Tüm öğrenciler seçildi! Listeyi sıfırlayın.')
+      return
+    }
+
+    if (!user) {
+      alert('Önce giriş yapmalısınız!')
       return
     }
 
@@ -89,48 +159,148 @@ export default function RandomStudentPicker() {
         setTimeout(animate, animationInterval)
       } else {
         // Animasyon bitti, final seçimi yap
-        const finalIndex = Math.floor(Math.random() * availableStudents.length)
-        const selectedName = availableStudents[finalIndex]
+        let finalIndex = Math.floor(Math.random() * availableStudents.length)
+        let selectedName = availableStudents[finalIndex]
+
+        // Eğer seçilen isim boşsa, başka bir tane seç
+        if (!selectedName || selectedName.trim() === '') {
+          console.warn('⚠️ Empty student name selected, trying another one...')
+          finalIndex = (finalIndex + 1) % availableStudents.length
+          selectedName = availableStudents[finalIndex]
+        }
 
         setCurrentSelection(selectedName)
         setIsAnimating(false)
 
-        console.log('🎯 Random student selected:', selectedName)
+        console.log('🎯 Random student selected:', {
+          selectedName: `"${selectedName}"`,
+          selectedNameLength: selectedName.length,
+          availableCount: availableStudents.length,
+          finalIndex,
+          availableStudents: availableStudents.slice(0, 5) // İlk 5 tanesini göster
+        })
 
-        // Local'e kaydet
-        saveSelection(selectedName)
+        // Veritabanına kaydet (sadece geçerli isimler için)
+        if (selectedName && selectedName.trim() !== '') {
+          saveSelection(selectedName)
+        } else {
+          console.error('❌ Cannot save selection: student name is empty')
+        }
       }
     }
 
     animate()
   }
 
-  const saveSelection = (studentName: string) => {
-    // State'i güncelle
-    const newSelection: SelectedStudent = {
-      name: studentName,
-      timestamp: new Date()
+  const saveSelection = async (studentName: string) => {
+    if (!user) return
+
+    try {
+      // Öğrencinin profilini bul - veritabanındaki formatla eşleştir
+      // Öğrenci adı "Ad Soyad" veya "Ad" formatında olabilir
+      const nameParts = studentName.trim().split(' ')
+      const firstName = nameParts[0]
+      const lastName = nameParts.slice(1).join(' ') || '' // Soyad yoksa boş string
+
+      console.log('🔍 Searching for student:', {
+        studentName: `"${studentName}"`,
+        firstName: `"${firstName}"`,
+        lastName: `"${lastName}"`,
+        nameParts: nameParts,
+        studentNameLength: studentName.length,
+        isStudentNameEmpty: studentName.trim() === ''
+      })
+
+      // Önce mevcut profili kontrol et - tam eşleşme ara
+      const { data: existingProfile, error: searchError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .eq('role', 'student')
+        .eq('first_name', firstName)
+        .eq('last_name', lastName)
+        .single()
+
+      console.log('🔍 Student search result:', {
+        studentName: `"${studentName}"`,
+        firstName: `"${firstName}"`,
+        lastName: `"${lastName}"`,
+        profileFound: existingProfile ? 'YES' : 'NO',
+        profileId: existingProfile?.id,
+        searchError: searchError?.message || 'NONE',
+        searchCode: searchError?.code
+      })
+
+      let studentId = existingProfile?.id
+
+      // Profil yoksa sessizce çık (sadece kayıtlı öğrencileri kullan)
+      if (!studentId) {
+        console.warn('⚠️ Student profile not found, cannot save selection:', studentName)
+        return
+      }
+
+      // Öğrencinin sınıf bilgisini al
+      const { data: studentProfile } = await supabase
+        .from('profiles')
+        .select('class_section')
+        .eq('id', studentId)
+        .single()
+
+      const classSection = studentProfile?.class_section || 'Bilinmiyor'
+
+      // Seçimi kaydet
+      const { error: selectionError } = await supabase
+        .from('selected_students')
+        .insert({
+          teacher_id: user.id,
+          student_id: studentId,
+          class_section: classSection,
+          selected_at: new Date().toISOString()
+        })
+
+      if (selectionError) {
+        console.error('Seçim kaydetme hatası:', selectionError)
+        return
+      }
+
+      // State'i güncelle
+      const newSelection: SelectedStudent = {
+        name: studentName,
+        timestamp: new Date()
+      }
+
+      setSelectedStudents(prev => [newSelection, ...prev])
+      setAvailableStudents(prev => prev.filter(student => student !== studentName))
+
+    } catch (error) {
+      console.error('Seçim kaydetme hatası:', error)
     }
-
-    const updatedSelections = [newSelection, ...selectedStudents]
-    setSelectedStudents(updatedSelections)
-    setAvailableStudents(prev => prev.filter(student => student !== studentName))
-
-    // localStorage'a kaydet
-    localStorage.setItem('selectedStudents', JSON.stringify(updatedSelections))
   }
 
-  const resetSelections = () => {
+  const resetSelections = async () => {
+    if (!user) return
+
     if (!confirm('Tüm seçimleri sıfırlamak istediğinizden emin misiniz?')) {
       return
     }
 
-    setSelectedStudents([])
-    setAvailableStudents(STUDENTS)
-    setCurrentSelection(null)
+    try {
+      const { error } = await supabase
+        .from('selected_students')
+        .delete()
+        .eq('teacher_id', user.id)
 
-    // localStorage'ı temizle
-    localStorage.removeItem('selectedStudents')
+      if (error) {
+        console.error('Seçimleri sıfırlama hatası:', error)
+        return
+      }
+
+      setSelectedStudents([])
+      setAvailableStudents(allStudentsFromDB)
+      setCurrentSelection(null)
+
+    } catch (error) {
+      console.error('Seçimleri sıfırlama hatası:', error)
+    }
   }
 
   return (
@@ -167,7 +337,7 @@ export default function RandomStudentPicker() {
       {/* İstatistikler */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="bg-blue-50 p-4 rounded-lg text-center">
-          <div className="text-2xl font-bold text-blue-600">{STUDENTS.length}</div>
+          <div className="text-2xl font-bold text-blue-600">{allStudentsFromDB.length}</div>
           <div className="text-sm text-blue-800">Toplam Öğrenci</div>
         </div>
         <div className="bg-green-50 p-4 rounded-lg text-center">
@@ -183,13 +353,20 @@ export default function RandomStudentPicker() {
       {/* Kullanılabilir öğrenciler */}
       <div className="mb-8">
         <h3 className="text-xl font-semibold mb-4">📝 Kullanılabilir Öğrenciler ({availableStudents.length})</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-          {availableStudents.map((student, index) => (
-            <div key={index} className="bg-gray-50 p-2 rounded text-center text-sm">
-              {student}
-            </div>
-          ))}
-        </div>
+        {loadingStudents ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+            <p className="text-gray-600 mt-2">Öğrenci listesi yükleniyor...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {availableStudents.map((student, index) => (
+              <div key={index} className="bg-gray-50 p-2 rounded text-center text-sm">
+                {student}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Seçim geçmişi */}
