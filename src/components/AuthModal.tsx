@@ -71,7 +71,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     const result = await signIn(loginData.email, loginData.password)
 
     if (result.error) {
-      setError(result.error)
+      // Daha kullanıcı dostu hata mesajları
+      let userFriendlyError = result.error
+
+      if (result.error.includes('Invalid login credentials')) {
+        userFriendlyError = 'E-posta adresi veya şifre yanlış. Lütfen tekrar deneyin.'
+      } else if (result.error.includes('Email not confirmed')) {
+        userFriendlyError = 'E-posta adresiniz henüz doğrulanmamış. Lütfen e-posta kutunuzu kontrol edin ve doğrulama linkine tıklayın.'
+      } else if (result.error.includes('Too many requests')) {
+        userFriendlyError = 'Çok fazla giriş denemesi yapıldı. Lütfen bir süre bekledikten sonra tekrar deneyin.'
+      } else if (result.error.includes('User not found')) {
+        userFriendlyError = 'Bu e-posta adresi ile kayıtlı bir hesap bulunamadı. Önce kayıt olmanız gerekiyor.'
+      }
+
+      setError(userFriendlyError)
       setLoading(false)
       return
     }
