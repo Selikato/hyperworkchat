@@ -37,7 +37,7 @@ export default function RandomStudentPicker() {
   const [isAnimating, setIsAnimating] = useState(false)
   const [availableStudents, setAvailableStudents] = useState<string[]>([])
   const [loadingStudents, setLoadingStudents] = useState(true)
-  const [user, setUser] = useState<{ id: string; email: string } | null>(null)
+  const [user, setUser] = useState<{ id: string; email: string; class_section?: string } | null>(null)
   const [allStudentsFromDB, setAllStudentsFromDB] = useState<string[]>([])
 
   useEffect(() => {
@@ -45,18 +45,43 @@ export default function RandomStudentPicker() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user && user.email) {
-        setUser({ id: user.id, email: user.email })
+        // Kullanıcının profilini çek (sınıf bilgisi için)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('class_section')
+          .eq('id', user.id)
+          .single()
+
+        setUser({
+          id: user.id,
+          email: user.email,
+          class_section: profile?.class_section
+        })
       }
     }
 
-    // Öğrenci listesini veritabanından çek
+    getUser()
+  }, [])
+
+  // Kullanıcı bilgisi geldiğinde öğrencileri yükle
+  useEffect(() => {
+    if (!user) return
+
     const loadStudents = async () => {
       try {
-        const { data, error } = await supabase
+        // Kullanıcının sınıfına göre öğrenci listesini çek
+        let query = supabase
           .from('profiles')
-          .select('first_name, last_name')
+          .select('first_name, last_name, class_section')
           .eq('role', 'student')
           .order('first_name', { ascending: true })
+
+        // Kullanıcı bir sınıfa kayıtlıysa, sadece o sınıfın öğrencilerini göster
+        if (user.class_section) {
+          query = query.eq('class_section', user.class_section)
+        }
+
+        const { data, error } = await query
 
         if (!error && data) {
           const studentNames = data.map(student => {
@@ -72,6 +97,7 @@ export default function RandomStudentPicker() {
           console.log('✅ Öğrenci listesi yüklendi:', studentNames.length, 'öğrenci')
         } else {
           console.warn('Veritabanından öğrenci listesi alınamadı, varsayılan listeyi kullan:', error)
+          // Kullanıcı bir sınıfa kayıtlıysa, sınıf bilgisi olmadan varsayılan listeyi kullan
           setAllStudentsFromDB(STUDENTS)
           setAvailableStudents(STUDENTS)
         }
@@ -84,7 +110,30 @@ export default function RandomStudentPicker() {
       }
     }
 
-    getUser()
+    loadStudents()
+  }, [user])
+
+  // Kullanıcı bilgisi geldiğinde öğrencileri yükle
+  useEffect(() => {
+    if (!user) return
+
+    const loadStudents = async () => {
+      try {
+        // Kullanıcının sınıfına göre öğrenci listesini çek
+        let query = supabase
+          .from('profiles')
+          .select('first_name, last_name, class_section')
+          .eq('role', 'student')
+          .order('first_name', { ascending: true })
+
+        // Kullanıcı bir sınıfa kayıtlıysa, sadece o sınıfın öğrencilerini göster
+        if (user.class_section) {
+          query = query.eq('class_section', user.class_section)
+        }
+
+        const { data, error } = await query
+
+        if (!error && data) {
     loadStudents()
 
     // Önceki seçimleri yükle
